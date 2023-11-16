@@ -1,4 +1,4 @@
-from .plot_utils import from_label, to_label
+from .qiskit_operator_labels import from_label, to_label
 
 import numpy as np
 
