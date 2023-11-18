@@ -30,7 +30,7 @@ def hilbert_space_basis(levels):
     return functools.reduce(char_kron, str_levels)
 
 
-def print_wavefunction(y, basis):
+def print_wavefunction(y, basis, tol=1e-9):
     """Print a wavefunction.
 
     Arguments:
@@ -38,11 +38,11 @@ def print_wavefunction(y, basis):
         basis (List[Str]) -- Vector of labels
     """
     for val, ket in zip(y.data, basis):
-        if abs(val) > 0:
+        if abs(val) > tol:
             print(f"{val:+.2f} |{ket}>")
 
 
-def print_density_matrix(y, basis):
+def print_density_matrix(y, basis, tol=1e-9):
     """Print a density matrix.
 
     Arguments:
@@ -53,7 +53,7 @@ def print_density_matrix(y, basis):
     for row_val, row_ket in zip(y.data, dm_basis):
         row_str = ""
         for rowcol_val, rowcol_ket in zip(row_val, row_ket):
-            if abs(rowcol_val) > 0:
+            if abs(rowcol_val) > tol:
                 row_str += f"{rowcol_val:+.2f} {rowcol_ket}  "
         if row_str:
             print(row_str)

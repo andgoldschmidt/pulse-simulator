@@ -8,8 +8,6 @@ from .qiskit_backend_utils import (
     vars_rabi,
 )
 
-import traceback
-
 
 def zz_coupling(edge, variables):
     """Return the crosstalk coupling amount.
@@ -31,10 +29,10 @@ def zz_coupling(edge, variables):
         J12 = variables[vars_coupling(i1, i2)]
         ω1 = variables[vars_frequency(i1)]
         ω2 = variables[vars_frequency(i2)]
-    except Exception:
+    except Exception as e:
         print(f"Missing required parameter for crosstalk edge {edge}.")
-        traceback.print_exc()
-
+        raise e
+    
     Δ12 = ω1 - ω2
     return -2 * α * J12**2 / (Δ12**2 - α**2)
 
@@ -89,9 +87,9 @@ def cross_resonance_model(qubits, registers, backend, variables, swpt=False):
         # TODO: Should 2QB gate even have same Rabi as 1QB?
         rc = variables[vars_rabi(i_c)]
         rt = variables[vars_rabi(i_t)]
-    except Exception:
+    except Exception as e:
         print(f"Missing parameter for CR model on {qubits}.")
-        traceback.print_exc()
+        raise e
 
     # Modify params
     Δct = ωc - ωt

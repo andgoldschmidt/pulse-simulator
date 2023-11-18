@@ -8,7 +8,6 @@ from .qiskit_backend_utils import (
 )
 
 import numpy as np
-import traceback
 import warnings
 
 
@@ -81,11 +80,11 @@ def rx_model(qubit, registers, backend, variables, rotating_frame=False):
     """
     # Unpack parameters
     try:
-        w = variables[vars_frequency(qubit)]
-        r = variables[vars_rabi(qubit)]
-    except Exception:
+        w = 2 * np.pi * variables[vars_frequency(qubit)]
+        r = 2 * np.pi * variables[vars_rabi(qubit)]
+    except Exception as e:
         print(f"Missing required parameter for R_X model on qubit {qubit}.")
-        traceback.print_exc()
+        raise e
 
     # Construct operator labels
     drift_label = to_label({qubit: "Z"}, registers)
@@ -93,11 +92,11 @@ def rx_model(qubit, registers, backend, variables, rotating_frame=False):
 
     # Construct Hamiltonian operators
     if rotating_frame:
-        drift_op = 0.0
+        drift_op = 0.0  # TODO: Better shaped default
     else:
-        drift_op = (2 * np.pi * w / 2) * from_label(drift_label)
+        drift_op = w / 2 * from_label(drift_label)
 
-    control_op = 2 * np.pi * r * from_label(control_label)
+    control_op = r * from_label(control_label)
 
     # Get drive channel
     control_ch = get_drive_channel(qubit, backend, name=True)

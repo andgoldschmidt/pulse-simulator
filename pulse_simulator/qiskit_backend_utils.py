@@ -6,6 +6,10 @@ from qiskit.pulse import DriveChannel
 def backend_simulation_vars(backend, angular=False, rabi=False, units=1.0):
     """Extract variables for the pulse simulation from the backend.
 
+    NOTE:   It is unclear what happens when Rabi rates are unequal and robust
+            control pulses are applied. Does calibration involve simple
+            rescaling?
+
     Args:
         backend (qk.providers.fake_provider.FakePulseBackend): Backend
         angular (bool, optional): If False, returns parameters in frequency ω,
@@ -32,7 +36,10 @@ def backend_simulation_vars(backend, angular=False, rabi=False, units=1.0):
     }
     if not rabi:
         for i in range(n):
-            H[vars_rabi(i)] = 1.0
+            if angular:
+                H[vars_rabi(i)] = 1.0
+            else:
+                H[vars_rabi(i)] = 1 / 2 / np.pi
     return functools.reduce(lambda a, b: {**a, **b}, [H, t1, t2])
 
 
