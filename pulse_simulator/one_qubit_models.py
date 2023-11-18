@@ -1,16 +1,25 @@
 from .qiskit_operator_labels import from_label, to_label
+from .qiskit_backend_utils import (
+    get_drive_channel,
+    vars_frequency,
+    vars_rabi,
+    vars_t1,
+    vars_t2,
+)
 
 import numpy as np
+import traceback
+import warnings
 
 
-def qubit_decay_model(qubit, circuit, **kwargs):
+def qubit_decay_model(qubit, registers, variables):
     """Construct a single qubit error model for pulse gates from t1 and t2
     times. The functionality is similar to the behavior of QuTip pulse.
 
     Arguments:
-        qubit (qiskit.circuit.quantumregister.Qubit) -- Qubit to model
-        circuit (qiskit.circuit.quantumcircuit.QuantumCircuit) -- Circuit in
-            which qubit resides.
+        qubit (Int) -- Qubit index
+        registers (List[Int]) -- Qubits in circuit
+        variables (Dict{Str, Int}) -- Backend configuration properties.
 
     Keyword arguments:
         t1 [optional] (float) -- Damping decay constant.
@@ -18,20 +27,22 @@ def qubit_decay_model(qubit, circuit, **kwargs):
 
     Raises:
         ValueError: Inconsistent t1 and t2.
+        Warning: Both t1 and t2 unset.
 
     Returns:
         List[Static jump operators]
     """
-    # Unpack parameters
-    t1 = kwargs.pop("t1", None)
-    t2 = kwargs.pop("t2", None)
+    # Unpack parameters (allow default None)
+    t1 = variables.get(vars_t1(qubit), None)
+    t2 = variables.get(vars_t2(qubit), None)
 
-    qubit_index = circuit.find_bit(qubit).index
+    if t1 is None and t2 is None:
+        warnings.warn(f"Neither T1 nor T2 is set for Qubit {qubit}.")
 
     # Construct operator labels
-    # Destroy D is an augmented label
-    damp_label = to_label({qubit_index: "D"}, circuit.num_qubits)
-    dephase_label = to_label({qubit_index: "1"}, circuit.num_qubits)
+    # Destroy D is an augmented label (not in Qiskit's from_label)
+    damp_label = to_label({qubit: "D"}, registers)
+    dephase_label = to_label({qubit: "1"}, registers)
 
     # Construct dissipation operators (QuTip pulse)
     static_op = []
@@ -50,36 +61,45 @@ def qubit_decay_model(qubit, circuit, **kwargs):
     return static_op
 
 
-def rx_model(qubit, circuit, **kwargs):
-    """Construct a single qubit model for pulse gates.
+def rx_model(qubit, registers, backend, variables, rotating_frame=False):
+    """Construct a single qubit model for pulse gates. This model is
+    provided in the lab frame by default.
 
     Arguments:
-        qubit (qiskit.circuit.quantumregister.Qubit) -- Qubit to model
-        circuit (qiskit.circuit.quantumcircuit.QuantumCircuit) -- Circuit in
-            which qubit resides.
+        qubit (Int) -- Qubit index
+        registers (List[Int]) -- Qubits in circuit
+        backend (qk.providers.fake_provider.FakePulseBackend) -- Backend
+            needed for drive channels.
+        variables (Dict{Str, Int}) -- Backend configuration properties.
+        rotating_frame (Bool) -- Use the rotating frame. Default false.
 
     Keyword arguments:
-        freq (float) -- Energy of qubit.
-        rabi_freq (float) -- Energy of drive coupling.
-
-    Raises:
-        ValueError: Inconsistent t1 and t2.
+        frequency (float) -- Energy of qubit.
 
     Returns:
         Drift operator, List[Control operators], List[Drive channels]
     """
     # Unpack parameters
-    w = kwargs.pop("freq")
-    r = kwargs.pop("rabi_freq")
-
-    qubit_index = circuit.find_bit(qubit).index
+    try:
+        w = variables[vars_frequency(qubit)]
+        r = variables[vars_rabi(qubit)]
+    except Exception:
+        print(f"Missing required parameter for R_X model on qubit {qubit}.")
+        traceback.print_exc()
 
     # Construct operator labels
-    drift_label = to_label({qubit_index: "Z"}, circuit.num_qubits)
-    control_label = to_label({qubit_index: "X"}, circuit.num_qubits)
+    drift_label = to_label({qubit: "Z"}, registers)
+    control_label = to_label({qubit: "X"}, registers)
 
     # Construct Hamiltonian operators
-    drift_op = 2 * np.pi * w * from_label(drift_label) / 2
-    control_op = 2 * np.pi * r * from_label(control_label) / 2
+    if rotating_frame:
+        drift_op = 0.0
+    else:
+        drift_op = (2 * np.pi * w / 2) * from_label(drift_label)
 
-    return drift_op, [control_op], [f"d{qubit_index}"]
+    control_op = 2 * np.pi * r * from_label(control_label)
+
+    # Get drive channel
+    control_ch = get_drive_channel(qubit, backend, name=True)
+
+    return drift_op, [control_op], [control_ch]

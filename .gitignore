@@ -82,6 +82,7 @@ target/
 
 # VS Code
 *.code-workspace
+.vscode/settings.json
 
 # OSX 
 .DS_Store
