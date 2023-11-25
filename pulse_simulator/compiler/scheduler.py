@@ -54,7 +54,9 @@ class RobustScheduler:
     def _schedule(self, qc: QuantumCircuit) -> QuantumCircuit:
         return self._pm.run(qc)
 
-    def run(self, qc: QuantumCircuit, return_dag: bool = False) -> QuantumCircuit | DAGCircuit:
+    def run(
+        self, qc: QuantumCircuit, return_dag: bool = False
+    ) -> QuantumCircuit | DAGCircuit:
         transpiled_qc = self._transpile(qc)
 
         # Attach virtual gates and keep track of any virtual gates at the end of the circuit
@@ -82,7 +84,7 @@ class RobustScheduler:
         else:
             # Make virtual gates "real" again and attach any pending at the end of the circuit
             final_dag = expand_pass.run(circuit_to_dag(last_qc))
-        
+
         if self._final_virtuals and self._attach_final_virtual:
             final_dag = expand_pass.handle_final_virtuals(
                 final_dag, final_virtuals=self._final_virtuals
