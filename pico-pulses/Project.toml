@@ -1,0 +1,7 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+NamedTrajectories = "538bc3a1-5ab9-4fc3-b776-35ca1e893e08"
+Pardiso = "46dd5b70-b6fb-5a00-ae2d-e8fea33afaf2"
+QuantumCollocation = "0dc23a59-5ffb-49af-b6bd-932a8ae77adf"
+TrajectoryIndexingUtils = "6dad8b7f-dd9a-4c28-9b70-85b9a079bfc8"
