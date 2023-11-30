@@ -1,4 +1,8 @@
+import qiskit
+import pulse_simulator as ps
+
 from qiskit import QuantumCircuit, QuantumRegister
+from qiskit.providers import BackendV2
 from qiskit.circuit import Qubit
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler import CouplingMap
@@ -17,12 +21,14 @@ class PulseBuilder:
         one_q_pulses: dict[int, SymbolicPulse],
         control_pulses: dict[int, SymbolicPulse],
         target_pulses: dict[int, SymbolicPulse],
+        backend: BackendV2,
     ):
         self._basis_gates = basis_gates
         self._coupling_map = coupling_map
         self._one_q_pulses = one_q_pulses
         self._control_pulses = control_pulses
         self._target_pulses = target_pulses
+        self._backend = backend
 
         # set the scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly
@@ -35,10 +41,64 @@ class PulseBuilder:
 
     def build(self, circuit: QuantumCircuit):
         moments = self._build_moments_dicts(circuit)
+        pulses = []
 
-        # TODO: actually build pulses
+        for moment in moments:
+            gates = moment[0]
+            virtual_zs = moment[1]
+            n_qubits = moment[2]
+            if n_qubits == 1:
+                pulse = self._build_single_qubit_pulse(gates, virtual_zs)
+            elif n_qubits == 2:
+                pulse = self._build_two_qubit_pulse(gates, virtual_zs)
+            pulses.append(pulse)
 
-        return moments
+        return pulses
+
+    def _build_single_qubit_pulse(
+        self, gates: dict[int, str], virtual_zs: dict[int, float]
+    ) -> SymbolicPulse:
+        pulses = self._one_q_pulses
+
+        with qiskit.pulse.build(name="One moment") as pulse_moment:
+            for i, gate in gates.items():
+                channel = qiskit.pulse.DriveChannel(i)
+                # NOTE:     Shift phase will adjust the carry and future gates.
+                #           Restricted to the current moment, it should be the same as
+                #           a zero time R_Z gate. This doesn't seem to work if you
+                #           aren't using carriers, so we just toss the gates in.
+                # if i in virtual_zs:
+                #    qiskit.pulse.shift_phase(virtual_zs[i], channel)
+                qiskit.pulse.play(pulses[gate], channel)
+
+        return pulse_moment
+
+    def _build_two_qubit_pulse(
+        self,
+        gates: dict[tuple[int, int]],
+        virtual_zs: dict[int, float],
+    ) -> SymbolicPulse:
+        control_pulses = self._control_pulses
+        target_pulses = self._target_pulses
+        backend = self._backend
+
+        with qiskit.pulse.build(name="Two moment") as pulse_moment:
+            for (c, t), gate in gates.items():
+                control_channel = ps.get_control_channel(c, t, backend)
+                target_channel = ps.get_drive_channel(t, backend)
+
+                # # Replace Virtual Z => Zero time Rz gate
+                # for i in virtual_zs.items():
+                #     if i == c:
+                #         qiskit.pulse.shift_phase(virtual_zs[i], control_channel)
+                #     elif i == t:
+                #         qiskit.pulse.shift_phase(virtual_zs[i], target_channel)
+
+                # Pulses must work together
+                qiskit.pulse.play(control_pulses[gate], control_channel)
+                qiskit.pulse.play(target_pulses[gate], target_channel)
+
+        return pulse_moment
 
     def _build_moments_dicts(
         self, circuit: QuantumCircuit
@@ -86,13 +146,13 @@ class PulseBuilder:
                             virtual_zs.update(self._virtual_str_to_dict(virtual))
 
             if gates_dict:
-                moments.append((gates_dict, virtual_zs))
+                moments.append((gates_dict, virtual_zs, len(qargs)))
 
         if final_virtuals := self._scheduler._final_virtuals:
             virtual_zs = {}
             for qubit in final_virtuals:
                 virtual_zs.update(self._virtual_str_to_dict(final_virtuals[qubit]))
-            moments.append(({}, virtual_zs))
+            moments.append(({}, virtual_zs, 1))
 
         return moments
 
