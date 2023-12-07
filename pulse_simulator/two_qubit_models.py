@@ -59,7 +59,9 @@ def crosstalk_model(registers, graph, variables):
     return operator
 
 
-def cross_resonance_model(qubits, registers, backend, variables, model_name="Toy"):
+def cross_resonance_model(
+    qubits, registers, backend, variables, model_name="Toy", return_params=False
+):
     """Construct a two qubit model for pulse CR gates.
 
     Arguments:
@@ -74,6 +76,9 @@ def cross_resonance_model(qubits, registers, backend, variables, model_name="Toy
     Returns:
         Drift operator, List[Control operators], List[Drive channels]
     """
+    # Parameters dictionary
+    params = {}
+
     # Unpack qubits
     i_c, i_t = qubits
 
@@ -109,6 +114,7 @@ def cross_resonance_model(qubits, registers, backend, variables, model_name="Toy
     if model_name == "SWPT":
         # Schriefer-Wolff perturbation theory
         drift_op = 0.0
+        params = {"ZX": (α / Δct), "R": J / (Δct + α)}
         ctrl_drive_op = rc * J / (Δct + α) * (IX + (α / Δct) * ZX)
         targ_drive_op = rt * IX
         ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
@@ -118,6 +124,7 @@ def cross_resonance_model(qubits, registers, backend, variables, model_name="Toy
     elif model_name == "Simple":
         # Simple all-μwave entangling gate for fixed-frequency SC qubits
         drift_op = Δct * ZI  # TODO: Can/should this be zero?
+        params = {"ZX": J / Δct, "R": 1.0}
         ctrl_drive_op = rc * (XI + J / Δct * ZX)
         targ_drive_op = rt * IX
         ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
@@ -135,4 +142,7 @@ def cross_resonance_model(qubits, registers, backend, variables, model_name="Toy
     else:
         raise ValueError(f"Unknown CR gate model with name {model_name}")
 
-    return drift_op, control_ops, control_channels
+    if return_params:
+        return drift_op, control_ops, control_channels, params
+    else:
+        return drift_op, control_ops, control_channels
