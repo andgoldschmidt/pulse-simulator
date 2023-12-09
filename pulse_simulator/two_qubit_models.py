@@ -114,7 +114,7 @@ def cross_resonance_model(
     if model_name == "SWPT":
         # Schriefer-Wolff perturbation theory
         drift_op = 0.0
-        params = {"ZX": (α / Δct), "R": J / (Δct + α)}
+        params = {"ZX": rc * J / (Δct + α) * (α / Δct), "IX": rc * J / (Δct + α)}
         ctrl_drive_op = rc * J / (Δct + α) * (IX + (α / Δct) * ZX)
         targ_drive_op = rt * IX
         ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
@@ -124,7 +124,7 @@ def cross_resonance_model(
     elif model_name == "Simple":
         # Simple all-μwave entangling gate for fixed-frequency SC qubits
         drift_op = Δct * ZI  # TODO: Can/should this be zero?
-        params = {"ZX": J / Δct, "R": 1.0}
+        params = {"ZX": rc * J / Δct, "XI": rc, "ZI": Δct}
         ctrl_drive_op = rc * (XI + J / Δct * ZX)
         targ_drive_op = rt * IX
         ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
@@ -135,6 +135,7 @@ def cross_resonance_model(
         drift_op = 0.0
         ctrl_drive_op = rc * ZX
         targ_drive_op = rt * IX
+        params = {"ZX": rc}
         ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
         targ_drive_l = get_drive_channel(i_t, backend, name=True)
         control_ops = [ctrl_drive_op, targ_drive_op]
