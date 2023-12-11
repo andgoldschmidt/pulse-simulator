@@ -60,7 +60,9 @@ def qubit_decay_model(qubit, registers, variables):
     return static_op
 
 
-def rx_model(qubit, registers, backend, variables, rotating_frame=False):
+def rx_model(
+    qubit, registers, backend, variables, rotating_frame=False, return_params=False
+):
     """Construct a single qubit model for pulse gates. This model is
     provided in the lab frame by default.
 
@@ -86,6 +88,8 @@ def rx_model(qubit, registers, backend, variables, rotating_frame=False):
         print(f"Missing required parameter for R_X model on qubit {qubit}.")
         raise e
 
+    params = {}
+
     # Construct operator labels
     drift_label = to_label({qubit: "Z"}, registers)
     control_label = to_label({qubit: "X"}, registers)
@@ -97,8 +101,12 @@ def rx_model(qubit, registers, backend, variables, rotating_frame=False):
         drift_op = w / 2 * from_label(drift_label)
 
     control_op = r * from_label(control_label)
+    params["r"] = r
 
     # Get drive channel
     control_ch = get_drive_channel(qubit, backend, name=True)
 
-    return drift_op, [control_op], [control_ch]
+    if return_params:
+        return drift_op, [control_op], [control_ch], params
+    else:
+        return drift_op, [control_op], [control_ch]
