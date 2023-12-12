@@ -19,5 +19,6 @@ from .qiskit_simulation_utils import (
 from .qiskit_operator_labels import *
 from .qiskit_backend_utils import *
 from .plot_utils import *
+from .compiler import *
 
 from .__version__ import __version__
