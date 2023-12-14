@@ -1,6 +1,10 @@
-/Manifest.toml
-qkenv/
+# Data
+*.npy
 *.jld2
+
+# Venv
+Manifest.toml
+qkenv/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
