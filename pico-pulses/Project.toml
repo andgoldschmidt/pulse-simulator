@@ -1,7 +1,9 @@
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
 NamedTrajectories = "538bc3a1-5ab9-4fc3-b776-35ca1e893e08"
 Pardiso = "46dd5b70-b6fb-5a00-ae2d-e8fea33afaf2"
 QuantumCollocation = "0dc23a59-5ffb-49af-b6bd-932a8ae77adf"
