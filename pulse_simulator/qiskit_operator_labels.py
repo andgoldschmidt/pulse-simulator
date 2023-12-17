@@ -6,6 +6,10 @@ from qiskit.circuit.library import standard_gates
 from qiskit.quantum_info.operators import Operator
 
 
+def zero_operator(num_qubits):
+    return np.zeros((2**num_qubits, 2**num_qubits))
+
+
 def from_label(label):
     """Return a tensor product of single-qubit operators.
 
