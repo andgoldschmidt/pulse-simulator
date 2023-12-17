@@ -8,7 +8,6 @@ from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler import CouplingMap
 from qiskit.converters import circuit_to_dag
 from qiskit.transpiler.passes import RemoveBarriers
-from qiskit.pulse import SymbolicPulse
 
 from .scheduler import RobustScheduler
 
@@ -18,9 +17,9 @@ class PulseBuilder:
         self,
         basis_gates: list[str],
         coupling_map: CouplingMap | None,
-        one_q_pulses: dict[int, SymbolicPulse],
-        control_pulses: dict[int, SymbolicPulse],
-        target_pulses: dict[int, SymbolicPulse],
+        one_q_pulses: dict[str, qiskit.pulse.Waveform],
+        control_pulses: dict[str, qiskit.pulse.Waveform],
+        target_pulses: dict[str, qiskit.pulse.Waveform],
         backend: BackendV2,
     ):
         self._basis_gates = basis_gates
@@ -57,7 +56,7 @@ class PulseBuilder:
 
     def _build_single_qubit_pulse(
         self, gates: dict[int, str], virtual_zs: dict[int, float]
-    ) -> SymbolicPulse:
+    ) -> qiskit.pulse.Waveform:
         pulses = self._one_q_pulses
 
         with qiskit.pulse.build(name="One moment") as pulse_moment:
@@ -77,7 +76,7 @@ class PulseBuilder:
         self,
         gates: dict[tuple[int, int]],
         virtual_zs: dict[int, float],
-    ) -> SymbolicPulse:
+    ) -> qiskit.pulse.Waveform:
         control_pulses = self._control_pulses
         target_pulses = self._target_pulses
         backend = self._backend
