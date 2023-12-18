@@ -63,9 +63,12 @@ for pulse, name in zip(gates, ["x_blue", "x_red", "sx_blue", "sx_red"]):
     sim.set_pulse(name, pulse)
 
 qc = qiskit.QuantumCircuit(2)
-qc.x(0)
+qc.h(0)
 qc.cx(0, 1)
+qc.h(1)
 out = sim.simulate_circuit(qc)
+
+# 0.7072135785007072+0.7072135785007072j
 
 print("Output operator:")
 print(np.round(out.data, 3))

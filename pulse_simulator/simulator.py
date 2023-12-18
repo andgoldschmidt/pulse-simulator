@@ -135,6 +135,8 @@ class Simulator:
             if i not in virtual_zs:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
+        rzs = rzs.reverse_qargs()
+
         return (op @ rzs).reverse_qargs()
 
     def _simulate_two_qubit_moment(
