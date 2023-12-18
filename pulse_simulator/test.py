@@ -46,7 +46,7 @@ solver = qk_d.Solver(
 sim = ps.simulator.Simulator(basis_gates=["rz", "sx", "x", "cx"], solver=solver, backend=backend)
 
 # load and set pulses
-file_name = "./pico-pulses/saved-pulses-2023-12-13/a_single_qubit_gateset_R1e-3.csv"
+file_name = "./pico-pulses/saved-pulses-2023-12-13/a_single_qubit_gateset_default.csv"
 gates = []
 with open(file_name) as file:
     reader = csv.reader(file)
@@ -63,11 +63,12 @@ for pulse, name in zip(gates, ["x_blue", "x_red", "sx_blue", "sx_red"]):
     sim.set_pulse(name, pulse)
 
 qc = qiskit.QuantumCircuit(2)
-qc.h(0)
+qc.x(0)
 qc.cx(0, 1)
 out = sim.simulate_circuit(qc)
 
-print("Output density matrix:")
+print("Output operator:")
 print(np.round(out.data, 3))
-print("Expected density matrix:")
-print(np.round(qiskit.quantum_info.DensityMatrix(qc).data, 3))
+print("Expected operator:")
+print(np.round(qiskit.quantum_info.Operator(qc).data, 3))
+print("Equivalent:", out.equiv(qiskit.quantum_info.Operator(qc)))

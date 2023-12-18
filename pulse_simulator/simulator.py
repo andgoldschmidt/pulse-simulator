@@ -80,7 +80,7 @@ class Simulator:
 
         # simulate each moment
         num_qubits = circuit.num_qubits
-        out = DensityMatrix.from_int(0, 2**num_qubits)
+        out = Operator(QuantumCircuit(num_qubits))
         for moment in moments:
             gates = moment[0]
             virtual_zs = moment[1]
@@ -89,7 +89,19 @@ class Simulator:
                 op = self._simulate_one_qubit_moment(gates, virtual_zs, num_qubits)
             if n_qubits == 2:
                 op = self._simulate_two_qubit_moment(gates, virtual_zs, num_qubits)
-            out = out.evolve(op)
+            # print("\n")
+            # print(moment)
+            # print(op)
+            out = op @ out
+
+        # testing
+        # a = RobustScheduler(
+        #     basis_gates=self._basis_gates,
+        #     coupling_map=None,
+        #     reattach=True,
+        #     attach_final_virtual=True,
+        # )
+        # print("\n", Operator(a.run(circuit)).data)
 
         return out
 
@@ -117,14 +129,14 @@ class Simulator:
             magnus_order=1,
         )
         op = sol.y[-1]
-        
+
         # TODO: handle z gates correctly
         for i in range(num_qubits):
             if i not in virtual_zs:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
-        return op @ rzs
-    
+        return (op @ rzs).reverse_qargs()
+
     def _simulate_two_qubit_moment(
         self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int
     ) -> Operator:
@@ -132,12 +144,13 @@ class Simulator:
         qc = QuantumCircuit(num_qubits)
         for control, target in gates:
             qc.cx(control, target)
-        cx_op = Operator(qc)
+        op = Operator(qc)
+
         for i in range(num_qubits):
             if i not in virtual_zs:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
-        return cx_op @ rzs
+        return op @ rzs
 
     def _get_moments(self, circuit: QuantumCircuit) -> CIRCUIT_MOMENTS:
         n = circuit.num_qubits
