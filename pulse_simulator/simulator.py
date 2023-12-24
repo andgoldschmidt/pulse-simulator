@@ -2,6 +2,7 @@ import qiskit
 import qiskit_dynamics
 import pulse_simulator as ps
 import numpy as np
+import matplotlib.pyplot as plt
 
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Operator, DensityMatrix
@@ -68,6 +69,12 @@ class Simulator:
             raise Exception(f"Pulse {name} not required for simulation.")
         self._pulses[name] = pulse
 
+    def get_compiled_circuit(self, circuit: QuantumCircuit) -> QuantumCircuit:
+        circuit = RemoveBarriers()(circuit)
+        # use scheduler that will attach all virtual gates
+        scheduler = RobustScheduler(basis_gates=self._basis_gates)
+        return scheduler.run(circuit)
+
     def simulate_circuit(self, circuit: QuantumCircuit) -> DensityMatrix:
         # check that all pulses are loaded correctly
         pulses = self._pulses
@@ -116,6 +123,9 @@ class Simulator:
             for qubit in gates:
                 channel = qiskit.pulse.DriveChannel(qubit)
                 qiskit.pulse.play(pulses[gates[qubit]], channel)
+        
+        # pulse_moment.draw()
+        # plt.show()
 
         U0 = ps.qiskit_identity_operator(num_qubits)
         duration = pulse_moment.duration
