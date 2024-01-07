@@ -10,6 +10,7 @@ from .passes import (
     SlideTwoQubitOps,
     AttachVirtualGates,
     ExpandVirtualGates,
+    MergeAdjacentRzs,
 )
 
 
@@ -44,12 +45,16 @@ class RobustScheduler:
         # if not given, coupling map is linear
         if coupling_map is None:
             coupling_map = CouplingMap([[i, i + 1] for i in range(qc.num_qubits - 1)])
-        return transpile(
+            if qc.num_qubits == 1:
+                coupling_map = CouplingMap([[0, 0]])
+        transpiled_qc = transpile(
             qc,
             basis_gates=basis_gates,
             coupling_map=coupling_map,
             seed_transpiler=12345,  # set seed for testing
+            optimization_level=0,
         )
+        return transpiled_qc
 
     def _schedule(self, qc: QuantumCircuit) -> QuantumCircuit:
         return self._pm.run(qc)
@@ -59,9 +64,12 @@ class RobustScheduler:
     ) -> QuantumCircuit | DAGCircuit:
         transpiled_qc = self._transpile(qc)
 
+        rz_pass = MergeAdjacentRzs()
+        merged_rzs = rz_pass.run(circuit_to_dag(transpiled_qc))
+
         # Attach virtual gates and keep track of any virtual gates at the end of the circuit
         virtual_pass = AttachVirtualGates()
-        attached_dag = virtual_pass.run(circuit_to_dag(transpiled_qc))
+        attached_dag = virtual_pass.run(merged_rzs)
         self._final_virtuals = virtual_pass.get_final_virtuals()
 
         # Separate circuit into one- and two-qubit moments
