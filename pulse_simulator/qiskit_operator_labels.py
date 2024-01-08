@@ -6,11 +6,17 @@ from qiskit.circuit.library import standard_gates
 from qiskit.quantum_info.operators import Operator
 
 
-def from_label(label):
+def zero_operator(num_qubits):
+    return np.zeros((2**num_qubits, 2**num_qubits))
+
+
+def from_label(label, reverse=False):
     """Return a tensor product of single-qubit operators.
 
     Args:
         label (Str) -- single-qubit operator string.
+        reverse (Bool) -- whether to reverse the order of the qubits.
+            For Qiskit endianness, set reverse order to True.
 
     Returns:
         Operator -- The N-qubit operator.
@@ -63,7 +69,8 @@ def from_label(label):
     # Initialize an identity matrix and apply each gate
     num_qubits = len(label)
     op = Operator(np.eye(2**num_qubits, dtype=complex))
-    for qubit, char in enumerate(reversed(label)):
+    # Label is applied in reverse order; double reverse to actually reverse.
+    for qubit, char in enumerate(label if reverse else reversed(label)):
         if char != "I":
             op = op.compose(label_mats[char], qargs=[qubit])
     return op

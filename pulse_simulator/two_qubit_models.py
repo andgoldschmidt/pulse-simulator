@@ -1,4 +1,4 @@
-from .qiskit_operator_labels import from_label, to_label
+from .qiskit_operator_labels import from_label, to_label, zero_operator
 from .qiskit_backend_utils import (
     get_drive_channel,
     get_control_channel,
@@ -7,6 +7,8 @@ from .qiskit_backend_utils import (
     vars_frequency,
     vars_rabi,
 )
+
+import numpy as np
 
 
 def zz_coupling(edge, variables):
@@ -22,13 +24,13 @@ def zz_coupling(edge, variables):
     """
     i1, i2 = edge
     try:
-        α1 = variables[vars_anharmonicity(i1)]
-        α2 = variables[vars_anharmonicity(i2)]
+        α1 = 2 * np.pi * variables[vars_anharmonicity(i1)]
+        α2 = 2 * np.pi * variables[vars_anharmonicity(i2)]
         # Edges are assumed to be undirected
         α = (α1 + α2) / 2
-        J12 = variables[vars_coupling(i1, i2)]
-        ω1 = variables[vars_frequency(i1)]
-        ω2 = variables[vars_frequency(i2)]
+        J12 = 2 * np.pi * variables[vars_coupling(i1, i2)]
+        ω1 = 2 * np.pi * variables[vars_frequency(i1)]
+        ω2 = 2 * np.pi * variables[vars_frequency(i2)]
     except Exception as e:
         print(f"Missing required parameter for crosstalk edge {edge}.")
         raise e
@@ -64,14 +66,17 @@ def cross_resonance_model(
 ):
     """Construct a two qubit model for pulse CR gates.
 
+    Note: These models keep ZZ coupling separate! Any ZZ coupling should be
+    added to the drift Hamiltonian via the crosstalk model.
+
     Arguments:
         qubits (List[Int]) -- The two qubits, ordered as (control, target).
         registers (List[Int]) -- Qubits in circuit
         backend (qk.providers.fake_provider.FakePulseBackend) -- Backend for
             control channels.
         variables (Dict{Str, Int}) -- Backend configuration properties.
-        name (Str) -- The name of the model("SWPT", "Simple", "Toy"). Default
-            is "Toy".
+        name (Str) -- The name of the model("SWPT", "Simple", "Toy").
+            Default is "Toy".
 
     Returns:
         Drift operator, List[Control operators], List[Drive channels]
@@ -82,16 +87,20 @@ def cross_resonance_model(
     # Unpack qubits
     i_c, i_t = qubits
 
+    # Get channel labels
+    cr_drive_l = get_control_channel(i_c, i_t, backend, name=True)
+    targ_drive_l = get_drive_channel(i_t, backend, name=True)
+    ctrl_drive_l = get_drive_channel(i_c, backend, name=True)
+
     # Unpack parameters
     try:
-        J = variables[vars_coupling(i_c, i_t)]
-        αc = variables[vars_anharmonicity(i_c)]
-        αt = variables[vars_anharmonicity(i_c)]
-        ωc = variables[vars_frequency(i_c)]
-        ωt = variables[vars_frequency(i_t)]
-        # TODO: Should 2QB gate even have same Rabi as 1QB?
-        rc = variables[vars_rabi(i_c)]
-        rt = variables[vars_rabi(i_t)]
+        J = 2 * np.pi * variables[vars_coupling(i_c, i_t)]
+        αc = 2 * np.pi * variables[vars_anharmonicity(i_c)]
+        αt = 2 * np.pi * variables[vars_anharmonicity(i_c)]
+        ωc = 2 * np.pi * variables[vars_frequency(i_c)]
+        ωt = 2 * np.pi * variables[vars_frequency(i_t)]
+        rc = 2 * np.pi * variables[vars_rabi(i_c)]
+        rt = 2 * np.pi * variables[vars_rabi(i_t)]
     except Exception as e:
         print(f"Missing parameter for CR model on {qubits}.")
         raise e
@@ -107,39 +116,65 @@ def cross_resonance_model(
     ZX_label = to_label({i_c: "Z", i_t: "X"}, registers)
 
     # Construct Hamiltonian operators
+    Zero = zero_operator(len(registers))
     ZI = from_label(ZI_label)
     XI = from_label(XI_label)
     IX = from_label(IX_label)
     ZX = from_label(ZX_label)
     if model_name == "SWPT":
         # Schriefer-Wolff perturbation theory
-        drift_op = 0.0
-        params = {"ZX": rc * J / (Δct + α) * (α / Δct), "IX": rc * J / (Δct + α)}
-        ctrl_drive_op = rc * J / (Δct + α) * (IX + (α / Δct) * ZX)
+        params = {
+            "Model": f"{model_name}",
+            "Drift": "0",
+            f"{cr_drive_l}": f"{J / (Δct + α): .2e} * (I_{i_c} X_{i_t} + {(α / Δct): .2e} * Z_{i_c} X_{i_t})",
+            f"{targ_drive_l}": f"{rt} * X_{i_t}",
+            f"{ctrl_drive_l}": f"{rc} * X_{i_c}",
+        }
+
+        drift_op = Zero
+        cr_drive_op = J / (Δct + α) * (IX + (α / Δct) * ZX)
         targ_drive_op = rt * IX
-        ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
-        targ_drive_l = get_drive_channel(i_t, backend, name=True)
-        control_ops = [ctrl_drive_op, targ_drive_op]
-        control_channels = [ctrl_drive_l, targ_drive_l]
+        ctrl_drive_op = rc * XI
+
+        control_ops = [cr_drive_op, ctrl_drive_op, targ_drive_op]
+        control_channels = [cr_drive_l, ctrl_drive_l, targ_drive_l]
+
     elif model_name == "Simple":
         # Simple all-μwave entangling gate for fixed-frequency SC qubits
-        drift_op = Δct * ZI  # TODO: Can/should this be zero?
-        params = {"ZX": rc * J / Δct, "XI": rc, "ZI": Δct}
-        ctrl_drive_op = rc * (XI + J / Δct * ZX)
+        params = {
+            "Model": f"{model_name}",
+            "Drift": f"{Δct} * ZI",
+            f"{cr_drive_l}": f"X_{i_c} I_{i_t} + {J / Δct: .2e} * Z_{i_c} X_{i_t}",
+            f"{targ_drive_l}": f"{rt: .2e} * X_{i_t}",
+            f"{ctrl_drive_l}": f"{rc: .2e} * X_{i_c}",
+        }
+
+        drift_op = Δct * ZI
+        cr_drive_op = XI + J / Δct * ZX
+        ctrl_drive_op = rc * XI
         targ_drive_op = rt * IX
-        ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
-        targ_drive_l = get_drive_channel(i_t, backend, name=True)
-        control_ops = [ctrl_drive_op, targ_drive_op]
-        control_channels = [ctrl_drive_l, targ_drive_l]
+
+        control_ops = [cr_drive_op, ctrl_drive_op, targ_drive_op]
+        control_channels = [cr_drive_l, ctrl_drive_l, targ_drive_l]
+
     elif model_name == "Toy":
-        drift_op = 0.0
-        ctrl_drive_op = rc * ZX
+        rct = 1.0
+        params = {
+            "Model": f"{model_name}",
+            "Drift": "0",
+            f"{cr_drive_l}": f"{rct: .2e} Z_{i_c} X_{i_t}",
+            f"{targ_drive_l}": f"{rt: .2e} * X_{i_t}",
+            f"{ctrl_drive_l}": f"{rc: .2e} * X_{i_c}",
+        }
+
+        drift_op = Zero
+        cr_drive_op = rct * ZX
         targ_drive_op = rt * IX
-        params = {"ZX": rc}
-        ctrl_drive_l = get_control_channel(i_c, i_t, backend, name=True)
-        targ_drive_l = get_drive_channel(i_t, backend, name=True)
-        control_ops = [ctrl_drive_op, targ_drive_op]
-        control_channels = [ctrl_drive_l, targ_drive_l]
+        ctrl_drive_op = rc * XI
+
+        control_ops = [cr_drive_op, ctrl_drive_op, targ_drive_op]
+        control_channels = [cr_drive_l, ctrl_drive_l, targ_drive_l]
+
     else:
         raise ValueError(f"Unknown CR gate model with name {model_name}")
 
