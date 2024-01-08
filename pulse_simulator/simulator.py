@@ -11,7 +11,7 @@ from qiskit.providers import BackendV2
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers
 
-from compiler.scheduler import RobustScheduler
+from .compiler.scheduler import RobustScheduler
 
 # not sure if this should go here or where
 import jax
