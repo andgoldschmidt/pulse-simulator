@@ -94,17 +94,19 @@ def rx_model(
     drift_label = to_label({qubit: "Z"}, registers)
     control_label = to_label({qubit: "X"}, registers)
 
-    # Construct Hamiltonian operators
+    # Get drift
     if rotating_frame:
-        drift_op = 0.0  # TODO: Better shaped default
+        w_rot = 0.0
+        drift_op = w_rot * from_label(drift_label)
+        params["Drift"] = f"{w_rot: .2e} * Z_{qubit}"
     else:
         drift_op = w / 2 * from_label(drift_label)
+        params["Drift"] = f"{w / 2: .2e} * Z_{qubit}"
 
-    control_op = r * from_label(control_label)
-    params["r"] = r
-
-    # Get drive channel
+    # Get drive
     control_ch = get_drive_channel(qubit, backend, name=True)
+    control_op = r * from_label(control_label)
+    params[f"{control_ch}"] = f"{r: .2e} * X_{qubit}"
 
     if return_params:
         return drift_op, [control_op], [control_ch], params
