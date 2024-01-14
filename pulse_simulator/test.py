@@ -1,4 +1,3 @@
-import simulator
 import pulse_simulator as ps
 import functools
 import qiskit_dynamics as qk_d
@@ -6,17 +5,16 @@ import qiskit.providers.fake_provider as qk_fp
 import numpy as np
 import csv
 import qiskit
+import matplotlib.pyplot as plt
+import scipy
 
 backend = qk_fp.FakeManila()
 units = 1e9
 ns = units
 dt = backend.configuration().dt * ns
+print("dt: ", dt)
 
-N = 5  # number of spins
-hz = 1.0 * 2 * np.pi  # magnetic field along z
-Jx = 1.0 * 2 * np.pi  # Coupling along x
-Δt = 0.05  # time step for integration
-tlist = np.arange(50) * Δt  # time values
+N = 2  # number of spins
 
 registers = [i for i in range(N)]
 config_vars = ps.backend_simulation_vars(backend, rabi=False, units=units)
@@ -26,7 +24,8 @@ H_rx = functools.partial(
     registers=registers,
     backend=backend,
     variables=config_vars,
-    rotating_frame=False,
+    rotating_frame=True,
+    qiskit_order=True,
 )
 
 Hs_control = []
@@ -36,7 +35,31 @@ for qubit in registers:
     Hs_control += Hjs_control
     Hs_channels += Hjs_channel
 
-H_xtalk = ps.crosstalk_model(registers, ps.backend_edges(backend), config_vars)
+cr_model = functools.partial(
+    ps.cross_resonance_model,
+    registers=registers,
+    backend=backend,
+    variables=config_vars, 
+    model_name="Toy",
+    qiskit_order=True,
+)
+
+# Control model
+H_drift = 0.
+Hs_control = []
+Hs_channels = []
+for control, target in [(0, 1)]:
+    Hj_drift, Hjs_control, Hjs_channel, params = cr_model((control, target), return_params=True)
+    H_drift += Hj_drift
+    Hs_control += Hjs_control
+    Hs_channels += Hjs_channel
+
+
+# Cross talk term: ζ ZZ
+# H_xtalk = ps.crosstalk_model(registers, ps.backend_edges(backend), config_vars)
+ζ = 0.001
+Z = np.array([[1, 0], [0, -1]])
+H_xtalk = ζ * qiskit.quantum_info.Operator(np.kron(Z, Z))
 
 solver = qk_d.Solver(
     static_hamiltonian=H_xtalk,
@@ -48,124 +71,57 @@ solver = qk_d.Solver(
     channel_carrier_freqs={ch: 0.0 for ch in Hs_channels},
     dt=dt,
 )
+solver.model.evaluation_mode = 'dense'
 
 sim = ps.simulator.Simulator(
-    basis_gates=["rz", "sx", "x", "cx"], solver=solver, backend=backend
+    basis_gates=["rz", "sx", "x", "ecr"], solver=solver, backend=backend
 )
 
-# load and set pulses
-file_name = "./pico-pulses/saved-pulses-2023-12-13/a_single_qubit_gateset_R1e-6.csv"
+# load and set one-qubit pulses
+file_name = "./pico-pulses/saved-pulses-2023-12-13/a_single_qubit_gateset_R1e-5.csv"
 gates = []
 with open(file_name) as file:
     reader = csv.reader(file)
     for row in reader:
         gates.append(np.array([float(x) for x in row]))
 
-expected_angles = [np.pi / 2, np.pi / 2, np.pi / 4, np.pi / 4]
-for i in range(len(gates)):
-    normalization = np.trapz(gates[i], dx=dt) / expected_angles[i]
-    gates[i] = gates[i] / normalization
-
 for pulse, name in zip(gates, ["x_blue", "x_red", "sx_blue", "sx_red"]):
-    pulse = qiskit.pulse.Waveform(pulse, limit_amplitude=False)
-    sim.set_pulse(name, pulse)
+    qiskit_pulse = qiskit.pulse.Waveform(pulse, limit_amplitude=False)
+    sim.set_pulse(name, qiskit_pulse)
 
-def create_initial_state(qr, cr):
-    """
-    Creates the initial state for the experiment.
-    Here we would like to prepare the |+>|+>|+>|+> state.
-    """
-    circ = qiskit.QuantumCircuit(qr, cr)
-    [circ.h(qr[i]) for i in range(qr.size)]
-    return circ
-
-
-def rxx(circ, θx, q1, q2):
-    """
-    Implements the exp(-i theta/2 sx_1 sx_2) gate.
-    """
-    circ.cx(q1, q2)
-    circ.rx(θx, q1)
-    circ.cx(q1, q2)
-    return circ
+# load and set two-qubit pulses
+file_name = "./pico-pulses/saved-pulses-2023-12-17/a_two_qubit_default.csv"
+gates = []
+with open(file_name) as file:
+    reader = csv.reader(file)
+    for row in reader:
+        gates.append(np.array([float(x) for x in row]))
 
 
-def first_order_Trotter_unitary(circ, Δt, barrier=False):
-    """
-    Applies a Unitary for a single time step U(Δt) using first-order trotter expansion to the input quantum circuit.
-    input : circ is a quantum circuit
-    output : circ-U(Δt)-
-    """
-    # Layer A: coupling XX between n and n+1
-    # Induce parallel CR gates
-    if barrier:
-        circ.barrier()
-    for p in range(0, circ.num_qubits - 1, 2):
-        circ = rxx(circ, Jx * Δt, circ.qubits[p], circ.qubits[p + 1])
-    if barrier:
-        circ.barrier()
-    for p in range(1, circ.num_qubits - 1, 2):
-        circ = rxx(circ, Jx * Δt, circ.qubits[p], circ.qubits[p + 1])
+# resampling to dt = 2 / 9
+resampled_pulse = scipy.signal.resample(gates[0], len(gates[0]) * 5)
+rzx_p = qiskit.pulse.Waveform(-resampled_pulse, limit_amplitude=True)
+rzx_n = qiskit.pulse.Waveform(resampled_pulse, limit_amplitude=True)
+sim.set_pulse("zx+_blue", rzx_p)
+sim.set_pulse("zx+_red", rzx_p)
+sim.set_pulse("zx-_blue", rzx_n)
+sim.set_pulse("zx-_red", rzx_n)
 
-    #  Alt., a naive loop will apply XX rotations sequentially, failing to stack.
-    # for p in range(0, circ.num_qubits - 1):
-    #     circ = rxx(circ, Jx * Δt, circ.qubits[p], circ.qubits[p + 1])
-
-    # Layer B: on-site Z
-    for p in range(circ.num_qubits):
-        circ.rz(hz * Δt, circ.qubits[p])
-
-    return circ
-
-
-def second_order_Trotter_unitary(circ, Δt):
-    """
-    Applies a Unitary for a single time step U(Δt) using second-order trotter expansion to the input quantum circuit.
-    input : circ is a quantum circuit
-    output : circ-U(Δt)-
-    """
-    # Layer 2: on-site Z (half)
-    for p in range(circ.num_qubits):
-        circ.rz(hz * Δt / 2, circ.qubits[p])
-
-    # Layer 1: coupling XX between n and n+1
-    # Induce parallel structure (and symmetry)
-    for p in range(1, circ.num_qubits - 1, 2):
-        circ = rxx(circ, Jx * Δt / 2, circ.qubits[p], circ.qubits[p + 1])
-    # NOTE: Add barriers to separate the parallel section
-    circ.barrier()
-    for p in range(0, circ.num_qubits - 1, 2):
-        circ = rxx(circ, Jx * Δt, circ.qubits[p], circ.qubits[p + 1])
-    circ.barrier()
-    for p in range(1, circ.num_qubits - 1, 2):
-        circ = rxx(circ, Jx * Δt / 2, circ.qubits[p], circ.qubits[p + 1])
-
-    # Layer 2: on-site Z (half)
-    for p in range(circ.num_qubits):
-        circ.rz(hz * Δt / 2, circ.qubits[p])
-    return circ
-
-
-# qc = qiskit.QuantumCircuit(2)
-# qc.h(0)
-# qc.cx(0, 1)
-
-qr = qiskit.QuantumRegister(N)
-cr = qiskit.ClassicalRegister(N)
-qc = create_initial_state(qr, cr)
-qc.barrier()
-qc = first_order_Trotter_unitary(qc, Δt)
-
-print("Circuit to simulate: ")
-print(sim.get_compiled_circuit(qc).draw())
-
-out = sim.simulate_circuit(qc)
-
-# print("Output operator:")
-# print(np.round(out.data, 3))
-# print("Expected operator:")
-# print(np.round(qiskit.quantum_info.Operator(qc).data, 3))
-# print("Equivalent:", out.equiv(qiskit.quantum_info.Operator(qc)))
+qc = qiskit.QuantumCircuit(N)
+qc.h(0)
+qc.cx(0, 1)
 
 expected = qiskit.quantum_info.Operator(qc)
-print("Fidelity: ", qiskit.quantum_info.process_fidelity(out, expected))
+
+print("\nCircuit to simulate: ")
+print(sim.get_compiled_circuit(qc).draw())
+
+out = sim.simulate_circuit(qc, draw=False)
+
+print("Output operator:")
+print(np.round(out.data * (2 / np.sqrt(2)), 3), "\n")
+print("Expected operator:")
+print(np.round(expected.data * (2 / np.sqrt(2)), 3) , "\n")
+
+print("\nFidelity: ", qiskit.quantum_info.process_fidelity(out, expected))
+# print("Equivalent: ", expected.equiv(out))

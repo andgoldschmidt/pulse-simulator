@@ -62,7 +62,7 @@ def crosstalk_model(registers, graph, variables):
 
 
 def cross_resonance_model(
-    qubits, registers, backend, variables, model_name="Toy", return_params=False
+    qubits, registers, backend, variables, model_name="Toy", return_params=False, qiskit_order=False
 ):
     """Construct a two qubit model for pulse CR gates.
 
@@ -77,6 +77,7 @@ def cross_resonance_model(
         variables (Dict{Str, Int}) -- Backend configuration properties.
         name (Str) -- The name of the model("SWPT", "Simple", "Toy").
             Default is "Toy".
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default false.
 
     Returns:
         Drift operator, List[Control operators], List[Drive channels]
@@ -117,10 +118,10 @@ def cross_resonance_model(
 
     # Construct Hamiltonian operators
     Zero = zero_operator(len(registers))
-    ZI = from_label(ZI_label)
-    XI = from_label(XI_label)
-    IX = from_label(IX_label)
-    ZX = from_label(ZX_label)
+    ZI = from_label(ZI_label, reverse=qiskit_order)
+    XI = from_label(XI_label, reverse=qiskit_order)
+    IX = from_label(IX_label, reverse=qiskit_order)
+    ZX = from_label(ZX_label, reverse=qiskit_order)
     if model_name == "SWPT":
         # Schriefer-Wolff perturbation theory
         params = {

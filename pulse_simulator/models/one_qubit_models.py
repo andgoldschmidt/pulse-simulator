@@ -61,7 +61,7 @@ def qubit_decay_model(qubit, registers, variables):
 
 
 def rx_model(
-    qubit, registers, backend, variables, rotating_frame=False, return_params=False
+    qubit, registers, backend, variables, rotating_frame=False, return_params=False, qiskit_order=False
 ):
     """Construct a single qubit model for pulse gates. This model is
     provided in the lab frame by default.
@@ -75,6 +75,7 @@ def rx_model(
             needed for drive channels.
         variables (Dict{Str, Int}) -- Backend configuration properties.
         rotating_frame (Bool) -- Use the rotating frame. Default false.
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default false.
 
     Keyword arguments:
         frequency (float) -- Energy of qubit.
@@ -99,15 +100,15 @@ def rx_model(
     # Get drift
     if rotating_frame:
         w_rot = 0.0
-        drift_op = w_rot * from_label(drift_label)
+        drift_op = w_rot * from_label(drift_label, reverse=qiskit_order)
         params["Drift"] = f"{w_rot: .2e} * Z_{qubit}"
     else:
-        drift_op = w / 2 * from_label(drift_label)
+        drift_op = w / 2 * from_label(drift_label, reverse=qiskit_order)
         params["Drift"] = f"{w / 2: .2e} * Z_{qubit}"
 
     # Get drive
     control_ch = get_drive_channel(qubit, backend, name=True)
-    control_op = r * from_label(control_label)
+    control_op = r * from_label(control_label, reverse=qiskit_order)
     params[f"{control_ch}"] = f"{r: .2e} * X_{qubit}"
 
     if return_params:

@@ -11,7 +11,7 @@ from qiskit.providers import BackendV2
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers
 
-from .compiler import RobustScheduler
+from .compiler.scheduler import RobustScheduler 
 
 # not sure if this should go here or where
 import jax
@@ -21,7 +21,7 @@ jax.config.update("jax_platform_name", "cpu")
 qiskit_dynamics.array.Array.set_default_backend("jax")
 
 ONE_QUBIT_GATES = ["sx", "x"]
-TWO_QUBIT_GATES = ["cx"]
+TWO_QUBIT_GATES = ["ecr"]
 VIRTUAL_GATES = ["rz"]
 
 # custom types
@@ -42,18 +42,17 @@ class Simulator:
             elif gate in ONE_QUBIT_GATES:
                 required_pulses += [gate + "_blue", gate + "_red"]
             elif gate in TWO_QUBIT_GATES:
-                continue
-                # ignored for now, should be able to add once we figure out 2q gates
                 required_pulses += [
-                    gate + "_control_blue",
-                    gate + "_control_red",
-                    gate + "_target_blue",
-                    gate + "_target_red",
+                    "zx+_red",
+                    "zx+_blue",
+                    "zx-_red",
+                    "zx-_blue",
                 ]
         self._pulses = dict.fromkeys(required_pulses)
         self._dt = backend.configuration().dt * 1e9
         self._basis_gates = basis_gates
         self._solver = solver
+        self._backend = backend
 
         # set scheduler to not attach viertual gates since we sill extract
         # those from the label of the real gates and treat them accordingly
@@ -75,11 +74,12 @@ class Simulator:
         scheduler = RobustScheduler(basis_gates=self._basis_gates)
         return scheduler.run(circuit)
 
-    def simulate_circuit(self, circuit: QuantumCircuit) -> DensityMatrix:
+    def simulate_circuit(self, circuit: QuantumCircuit, draw: bool=False) -> DensityMatrix:
         # check that all pulses are loaded correctly
         pulses = self._pulses
         for gate_name in pulses:
             if pulses[gate_name] is None:
+                continue
                 raise Exception(f"Pulse {gate_name} not loaded.")
 
         # get moments dicts from scheduler
@@ -93,27 +93,15 @@ class Simulator:
             virtual_zs = moment[1]
             n_qubits = moment[2]
             if n_qubits == 1:
-                op = self._simulate_one_qubit_moment(gates, virtual_zs, num_qubits)
+                op = self._simulate_one_qubit_moment(gates, virtual_zs, num_qubits, draw)
             if n_qubits == 2:
-                op = self._simulate_two_qubit_moment(gates, virtual_zs, num_qubits)
-            # print("\n")
-            # print(moment)
-            # print(op)
+                op = self._simulate_two_qubit_moment(gates, virtual_zs, num_qubits, draw)
             out = op @ out
-
-        # testing
-        # a = RobustScheduler(
-        #     basis_gates=self._basis_gates,
-        #     coupling_map=None,
-        #     reattach=True,
-        #     attach_final_virtual=True,
-        # )
-        # print("\n", Operator(a.run(circuit)).data)
 
         return out
 
     def _simulate_one_qubit_moment(
-        self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int
+        self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int, draw: bool=False
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -124,44 +112,86 @@ class Simulator:
                 channel = qiskit.pulse.DriveChannel(qubit)
                 qiskit.pulse.play(pulses[gates[qubit]], channel)
 
-        # pulse_moment.draw()
-        # plt.show()
-
         U0 = ps.qiskit_identity_operator(num_qubits)
         duration = pulse_moment.duration
+        
+        if draw:
+            pulse_moment.draw()
+            plt.show()
+
         sol = solver.solve(
-            t_span=[0.0, duration],
+            t_span=[0.0, duration * dt],
             y0=U0,
             signals=pulse_moment,
             max_dt=dt,
-            t_eval=np.linspace(0, duration, int(duration / dt) + 1, endpoint=True),
+            t_eval=[0.0, duration * dt],
             method="jax_expm",
             magnus_order=1,
         )
         op = sol.y[-1]
 
-        # TODO: handle z gates correctly
         for i in range(num_qubits):
             if i not in virtual_zs:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
-        rzs = rzs.reverse_qargs()
 
-        return (op @ rzs).reverse_qargs()
+        return op @ rzs
 
     def _simulate_two_qubit_moment(
-        self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int
+        self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int, draw: bool=False
     ) -> Operator:
-        # TODO: use actual two-qubit pulses
-        qc = QuantumCircuit(num_qubits)
-        for control, target in gates:
-            qc.cx(control, target)
-        op = Operator(qc)
+        solver = self._solver
+        dt = self._dt
+        pulses = self._pulses
+        backend = self._backend
+
+        with qiskit.pulse.build() as pulse_moment:
+            for q0, q1 in gates:
+                gate_color = gates[(q0, q1)].split("_")[1]
+                drive_channel = ps.get_drive_channel(q0, backend)
+                control_channel = ps.get_control_channel(q0, q1, backend)
+
+                zx_p = pulses[f"zx+_{gate_color}"]
+                zx_n = pulses[f"zx-_{gate_color}"]
+                x = pulses[f"x_{gate_color}"]
+
+                # control channel is for R_ZX
+                qiskit.pulse.play(zx_p, control_channel)
+                qiskit.pulse.play(qiskit.pulse.Constant(x.duration, 0.0), control_channel)
+                qiskit.pulse.play(zx_n, control_channel)
+
+                # drive channel is for R_X
+                qiskit.pulse.play(qiskit.pulse.Constant(zx_p.duration, 0.0), drive_channel)
+                qiskit.pulse.play(x, drive_channel)
+                qiskit.pulse.play(qiskit.pulse.Constant(zx_n.duration, 0.0), drive_channel)
+
+        if draw:
+            pulse_moment.draw()
+            plt.show()
+                
+        U0 = ps.qiskit_identity_operator(num_qubits)
+        duration = pulse_moment.duration
+        sol = solver.solve(
+            t_span=[0.0, duration * dt],
+            y0=U0,
+            signals=pulse_moment,
+            max_dt=dt,
+            t_eval=[0.0, duration * dt],
+            method="jax_expm",
+            magnus_order=1,
+        )
+        op = sol.y[-1]
+
+        # qc = QuantumCircuit(num_qubits)
+        # for q0, q1 in gates:
+        #     qc.ecr(q0, q1)
+        # op = qiskit.quantum_info.Operator(qc).reverse_qargs()
 
         for i in range(num_qubits):
             if i not in virtual_zs:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
+
         return op @ rzs
 
     def _get_moments(self, circuit: QuantumCircuit) -> CIRCUIT_MOMENTS:
