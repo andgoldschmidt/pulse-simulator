@@ -62,7 +62,13 @@ def crosstalk_model(registers, graph, variables):
 
 
 def cross_resonance_model(
-    qubits, registers, backend, variables, model_name="Toy", return_params=False, qiskit_order=False
+    qubits,
+    registers,
+    backend,
+    variables,
+    model_name="Toy",
+    return_params=False,
+    qiskit_order=False,
 ):
     """Construct a two qubit model for pulse CR gates.
 

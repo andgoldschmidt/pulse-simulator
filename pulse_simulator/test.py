@@ -14,7 +14,7 @@ ns = units
 dt = backend.configuration().dt * ns
 print("dt: ", dt)
 
-N = 2  # number of spins
+N = 2 # number of spins
 
 registers = [i for i in range(N)]
 config_vars = ps.backend_simulation_vars(backend, rabi=False, units=units)
@@ -39,17 +39,19 @@ cr_model = functools.partial(
     ps.cross_resonance_model,
     registers=registers,
     backend=backend,
-    variables=config_vars, 
+    variables=config_vars,
     model_name="Toy",
     qiskit_order=True,
 )
 
 # Control model
-H_drift = 0.
+H_drift = 0.0
 Hs_control = []
 Hs_channels = []
 for control, target in [(0, 1)]:
-    Hj_drift, Hjs_control, Hjs_channel, params = cr_model((control, target), return_params=True)
+    Hj_drift, Hjs_control, Hjs_channel, params = cr_model(
+        (control, target), return_params=True
+    )
     H_drift += Hj_drift
     Hs_control += Hjs_control
     Hs_channels += Hjs_channel
@@ -59,7 +61,10 @@ for control, target in [(0, 1)]:
 # H_xtalk = ps.crosstalk_model(registers, ps.backend_edges(backend), config_vars)
 ζ = 0.001
 Z = np.array([[1, 0], [0, -1]])
-H_xtalk = ζ * qiskit.quantum_info.Operator(np.kron(Z, Z))
+H_xtalk = Z
+for _ in range(N - 1):
+    H_xtalk = np.kron(H_xtalk, Z)
+H_xtalk = ζ * qiskit.quantum_info.Operator(H_xtalk)
 
 solver = qk_d.Solver(
     static_hamiltonian=H_xtalk,
@@ -71,14 +76,14 @@ solver = qk_d.Solver(
     channel_carrier_freqs={ch: 0.0 for ch in Hs_channels},
     dt=dt,
 )
-solver.model.evaluation_mode = 'dense'
+solver.model.evaluation_mode = "dense"
 
 sim = ps.simulator.Simulator(
     basis_gates=["rz", "sx", "x", "ecr"], solver=solver, backend=backend
 )
 
 # load and set one-qubit pulses
-file_name = "./pico-pulses/saved-pulses-2023-12-13/a_single_qubit_gateset_R1e-5.csv"
+file_name = "./pico-pulses/saved-pulses-2023-12-13/a_single_qubit_gateset_default.csv"
 gates = []
 with open(file_name) as file:
     reader = csv.reader(file)
@@ -100,16 +105,17 @@ with open(file_name) as file:
 
 # resampling to dt = 2 / 9
 resampled_pulse = scipy.signal.resample(gates[0], len(gates[0]) * 5)
-rzx_p = qiskit.pulse.Waveform(-resampled_pulse, limit_amplitude=True)
-rzx_n = qiskit.pulse.Waveform(resampled_pulse, limit_amplitude=True)
+rzx_p = qiskit.pulse.Waveform(-resampled_pulse, limit_amplitude=False)
+rzx_n = qiskit.pulse.Waveform(resampled_pulse, limit_amplitude=False)
 sim.set_pulse("zx+_blue", rzx_p)
 sim.set_pulse("zx+_red", rzx_p)
 sim.set_pulse("zx-_blue", rzx_n)
 sim.set_pulse("zx-_red", rzx_n)
 
 qc = qiskit.QuantumCircuit(N)
-qc.h(0)
-qc.cx(0, 1)
+for _ in range(5):
+    qc.h(0)
+    qc.cx(0, 1)
 
 expected = qiskit.quantum_info.Operator(qc)
 
@@ -121,7 +127,7 @@ out = sim.simulate_circuit(qc, draw=False)
 print("Output operator:")
 print(np.round(out.data * (2 / np.sqrt(2)), 3), "\n")
 print("Expected operator:")
-print(np.round(expected.data * (2 / np.sqrt(2)), 3) , "\n")
+print(np.round(expected.data * (2 / np.sqrt(2)), 3), "\n")
 
 print("\nFidelity: ", qiskit.quantum_info.process_fidelity(out, expected))
 # print("Equivalent: ", expected.equiv(out))
