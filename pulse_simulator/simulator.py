@@ -11,7 +11,7 @@ from qiskit.providers import BackendV2
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers
 
-from .compiler.scheduler import RobustScheduler 
+from .compiler.scheduler import RobustScheduler
 
 # not sure if this should go here or where
 import jax
@@ -74,7 +74,9 @@ class Simulator:
         scheduler = RobustScheduler(basis_gates=self._basis_gates)
         return scheduler.run(circuit)
 
-    def simulate_circuit(self, circuit: QuantumCircuit, draw: bool=False) -> DensityMatrix:
+    def simulate_circuit(
+        self, circuit: QuantumCircuit, draw: bool = False
+    ) -> DensityMatrix:
         # check that all pulses are loaded correctly
         pulses = self._pulses
         for gate_name in pulses:
@@ -93,15 +95,23 @@ class Simulator:
             virtual_zs = moment[1]
             n_qubits = moment[2]
             if n_qubits == 1:
-                op = self._simulate_one_qubit_moment(gates, virtual_zs, num_qubits, draw)
+                op = self._simulate_one_qubit_moment(
+                    gates, virtual_zs, num_qubits, draw
+                )
             if n_qubits == 2:
-                op = self._simulate_two_qubit_moment(gates, virtual_zs, num_qubits, draw)
+                op = self._simulate_two_qubit_moment(
+                    gates, virtual_zs, num_qubits, draw
+                )
             out = op @ out
 
         return out
 
     def _simulate_one_qubit_moment(
-        self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int, draw: bool=False
+        self,
+        gates: GATE_DICT,
+        virtual_zs: VIRTUAL_ZS,
+        num_qubits: int,
+        draw: bool = False,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -114,7 +124,7 @@ class Simulator:
 
         U0 = ps.qiskit_identity_operator(num_qubits)
         duration = pulse_moment.duration
-        
+
         if draw:
             pulse_moment.draw()
             plt.show()
@@ -138,7 +148,11 @@ class Simulator:
         return op @ rzs
 
     def _simulate_two_qubit_moment(
-        self, gates: GATE_DICT, virtual_zs: VIRTUAL_ZS, num_qubits: int, draw: bool=False
+        self,
+        gates: GATE_DICT,
+        virtual_zs: VIRTUAL_ZS,
+        num_qubits: int,
+        draw: bool = False,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -157,18 +171,24 @@ class Simulator:
 
                 # control channel is for R_ZX
                 qiskit.pulse.play(zx_p, control_channel)
-                qiskit.pulse.play(qiskit.pulse.Constant(x.duration, 0.0), control_channel)
+                qiskit.pulse.play(
+                    qiskit.pulse.Constant(x.duration, 0.0), control_channel
+                )
                 qiskit.pulse.play(zx_n, control_channel)
 
                 # drive channel is for R_X
-                qiskit.pulse.play(qiskit.pulse.Constant(zx_p.duration, 0.0), drive_channel)
+                qiskit.pulse.play(
+                    qiskit.pulse.Constant(zx_p.duration, 0.0), drive_channel
+                )
                 qiskit.pulse.play(x, drive_channel)
-                qiskit.pulse.play(qiskit.pulse.Constant(zx_n.duration, 0.0), drive_channel)
+                qiskit.pulse.play(
+                    qiskit.pulse.Constant(zx_n.duration, 0.0), drive_channel
+                )
 
         if draw:
             pulse_moment.draw()
             plt.show()
-                
+
         U0 = ps.qiskit_identity_operator(num_qubits)
         duration = pulse_moment.duration
         sol = solver.solve(

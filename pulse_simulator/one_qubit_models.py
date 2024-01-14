@@ -61,7 +61,13 @@ def qubit_decay_model(qubit, registers, variables):
 
 
 def rx_model(
-    qubit, registers, backend, variables, rotating_frame=False, return_params=False, qiskit_order=False
+    qubit,
+    registers,
+    backend,
+    variables,
+    rotating_frame=False,
+    return_params=False,
+    qiskit_order=False,
 ):
     """Construct a single qubit model for pulse gates. This model is
     provided in the lab frame by default.
