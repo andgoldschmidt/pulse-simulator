@@ -44,7 +44,11 @@ class RobustScheduler:
 
         # if not given, coupling map is linear
         if coupling_map is None:
-            coupling_map = CouplingMap([[i, i + 1] for i in range(qc.num_qubits - 1)])
+            edge_list = []
+            for i in range(qc.num_qubits - 1):
+                edge_list.append([i, i + 1])
+                edge_list.append([i + 1, i])
+            coupling_map = CouplingMap(edge_list)
             if qc.num_qubits == 1:
                 coupling_map = CouplingMap([[0, 0]])
         transpiled_qc = transpile(
