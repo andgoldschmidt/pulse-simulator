@@ -88,17 +88,8 @@ with open(file_name) as file:
     for row in reader:
         gates.append(np.array([float(x) for x in row]))
 
-
-# resampling to dt = 2 / 9
-pulse = gates[0]
-# pulse = scipy.signal.resample(gates[0], int(len(gates[0]) / 2))
-print(np.trapz(pulse, dx = 2/9))
-print(np.pi / 8)
-
-# pulse = pulse * (np.pi / 4) / np.trapz(pulse, dx=2/9)
-
-rzx_p = qiskit.pulse.Waveform(pulse, limit_amplitude=False)
-rzx_n = qiskit.pulse.Waveform(-pulse, limit_amplitude=False)
+rzx_p = qiskit.pulse.Waveform(gates[0], limit_amplitude=False)
+rzx_n = qiskit.pulse.Waveform(-gates[0], limit_amplitude=False)
 sim.set_pulse("zx+_blue", rzx_p)
 sim.set_pulse("zx+_red", rzx_p)
 sim.set_pulse("zx-_blue", rzx_n)
@@ -109,7 +100,7 @@ sim.set_pulse("zx-_red", rzx_n)
 #     qc.h(0)
 #     qc.cx(0, 1)
 
-qc = qiskit.QuantumCircuit(2)
+qc = qiskit.QuantumCircuit(N)
 qc.ecr(0, 1)
 
 expected = qiskit.quantum_info.Operator(qc)

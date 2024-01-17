@@ -63,6 +63,9 @@ class Simulator:
             attach_final_virtual=False,
         )
 
+    def set_solver(self, solver: qiskit_dynamics.Solver) -> None:
+        self._solver = solver
+
     def set_pulse(self, name: str, pulse: qiskit.pulse.Waveform) -> None:
         if name not in self._pulses.keys():
             raise Exception(f"Pulse {name} not required for simulation.")
@@ -164,7 +167,6 @@ class Simulator:
                 gate_color = gates[(q0, q1)].split("_")[1]
                 drive_channel = ps.get_drive_channel(q0, backend)
                 control_channel = ps.get_control_channel(q0, q1, backend)
-
                 zx_p = pulses[f"zx+_{gate_color}"]
                 zx_n = pulses[f"zx-_{gate_color}"]
                 x = pulses[f"x_{gate_color}"]
