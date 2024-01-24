@@ -56,7 +56,7 @@ class RobustScheduler:
             basis_gates=basis_gates,
             coupling_map=coupling_map,
             seed_transpiler=12345,  # set seed for testing
-            optimization_level=0,
+            optimization_level=1,
         )
         return transpiled_qc
 
