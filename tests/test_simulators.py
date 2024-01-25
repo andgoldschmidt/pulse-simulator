@@ -1,15 +1,217 @@
-import unittest
+import functools
+import jax
+import numpy as np
+from qiskit.providers.fake_provider import FakeManila
+import qiskit_dynamics
+from qiskit import pulse
+import pytest
+
+import pulse_simulator
+
+# Configuration for jax
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_platform_name", "cpu")
+qiskit_dynamics.array.Array.set_default_backend("jax")
 
 
-class TestSingleQubitSimulators(unittest.TestCase):
-    def test_statevector_simulator_closed(self):
-        pass
+@pytest.fixture
+def registers():
+    return [0, 1]
 
-    def test_statevector_simulator_open(self):
-        pass
 
-    def test_unitary_simulator_closed(self):
-        pass
+@pytest.fixture
+def backend():
+    return FakeManila()
 
-    def test_unitary_simulator_open(self):
-        pass
+
+@pytest.fixture
+def units():
+    return 1e9  # GHz & ns
+
+
+@pytest.fixture
+def timing(backend, units):
+    ns = 1 / units
+    dt = backend.configuration().dt * ns
+    duration = 225 * dt  # ns
+    return {"dt": dt, "duration": duration}
+
+
+@pytest.fixture
+def signals(registers, timing):
+    dt = timing["dt"]
+    duration = timing["duration"]
+
+    # Play signals on all registers
+    x_gate = pulse_simulator.gaussian_envelope(dt, duration, angle=np.pi / 2)
+    with pulse.build(name="Moment") as signals:
+        for i in registers:
+            pulse.play(x_gate, pulse.DriveChannel(i))
+    return signals
+
+
+@pytest.fixture
+def config(backend, units):
+    return pulse_simulator.backend_simulation_vars(backend, units=units)
+
+
+@pytest.fixture
+def one_qubit_model(registers, backend, config):
+    return functools.partial(
+        pulse_simulator.rx_model,
+        registers=registers,
+        backend=backend,
+        variables=config,
+        rotating_frame=False,
+    )
+
+
+@pytest.fixture
+def one_qubit_decay(registers, config):
+    return functools.partial(
+        pulse_simulator.qubit_decay_model,
+        registers=registers,
+        variables=config,
+    )
+
+
+@pytest.fixture
+def crosstalk(registers, backend, config):
+    return pulse_simulator.crosstalk_model(
+        registers, pulse_simulator.backend_edges(backend), config
+    )
+
+
+@pytest.fixture
+def one_qubit_solver(registers, one_qubit_model, one_qubit_decay, crosstalk):
+    # Solver parameters
+    Hs_drift = []
+    Hs_control = []
+    Hs_channels = []
+    As_static = []
+    for qubit in registers:
+        Hj_drift, Hjs_control, Hjs_channel = one_qubit_model(qubit)
+        Ajs_static = one_qubit_decay(qubit)
+
+        Hs_drift += [Hj_drift]
+        Hs_control += Hjs_control
+        Hs_channels += Hjs_channel
+        As_static += Ajs_static
+
+    print(Hs_drift)
+    return {
+        "static_hamiltonian_drift": np.sum(Hs_drift, axis=0),
+        "static_hamiltonian_crosstalk": crosstalk,
+        "hamiltonian_operators": Hs_control,
+        "static_dissipators": As_static,
+        "hamiltonian_channels": Hs_channels,
+        "channel_carrier_freqs": {ch: 0.0 for ch in Hs_channels},
+    }
+
+
+def test_statevector_sim_closed(registers, timing, signals, one_qubit_solver):
+    y0 = pulse_simulator.qiskit_ground_state(len(registers))
+    yf_expected = np.array([0.0, 0.0, 0.0, 1.0])
+
+    # Unpack timing parameters
+    dt = timing["dt"]
+    duration = timing["duration"]
+
+    # Unpack solver parameters
+    static_hamiltonian_drift = one_qubit_solver["static_hamiltonian_drift"]
+    hamiltonian_operators = one_qubit_solver["hamiltonian_operators"]
+    hamiltonian_channels = one_qubit_solver["hamiltonian_channels"]
+    channel_carrier_freqs = one_qubit_solver["channel_carrier_freqs"]
+
+    # Closed, no crosstalk
+    # =====
+    solver_closed_drift = qiskit_dynamics.Solver(
+        static_hamiltonian=static_hamiltonian_drift,
+        hamiltonian_operators=hamiltonian_operators,
+        hamiltonian_channels=hamiltonian_channels,
+        channel_carrier_freqs=channel_carrier_freqs,
+        dt=dt,
+    )
+
+    # Dense, jax_expm
+    # -----
+    solver_closed_drift.model.evaluation_mode = "dense"
+    sol_dense_expm = solver_closed_drift.solve(
+        t_span=[0.0, duration],
+        y0=y0,
+        signals=signals,
+        max_dt=dt,
+        t_eval=[0, duration],
+        method="jax_expm",
+        magnus_order=1,
+    )
+    yf = sol_dense_expm.y[-1].data
+    assert np.isclose(abs(yf @ yf_expected.conj().T) ** 2, 1.0)
+
+    # Sparse, jax_odeint
+    # -----
+    solver_closed_drift.model.evaluation_mode = "sparse"
+    sol_sparse_odeint = solver_closed_drift.solve(
+        t_span=[0.0, duration],
+        y0=y0,
+        signals=signals,
+        t_eval=[0, duration],
+        atol=1e-8,
+        rtol=1e-8,
+        method="jax_odeint",
+    )
+    yf = sol_sparse_odeint.y[-1].data
+    assert np.isclose(abs(yf @ yf_expected.conj().T) ** 2, 1.0)
+
+
+def test_statevector_sim_closed_crosstalk(registers, timing, signals, one_qubit_solver):
+    y0 = pulse_simulator.qiskit_ground_state(len(registers))
+    yf_expected = np.array([0.0, 0.0, 0.0, 1.0])
+
+    # Unpack timing parameters
+    dt = timing["dt"]
+    duration = timing["duration"]
+
+    # Unpack solver parameters
+    static_hamiltonian_drift = one_qubit_solver["static_hamiltonian_drift"]
+    static_hamiltonian_crosstalk = one_qubit_solver["static_hamiltonian_crosstalk"]
+    hamiltonian_operators = one_qubit_solver["hamiltonian_operators"]
+    hamiltonian_channels = one_qubit_solver["hamiltonian_channels"]
+    channel_carrier_freqs = one_qubit_solver["channel_carrier_freqs"]
+
+    # Closed, with crosstalk
+    # =====
+    H0 = static_hamiltonian_drift.data + 100 * static_hamiltonian_crosstalk.data
+    solver_closed_crosstalk = qiskit_dynamics.Solver(
+        static_hamiltonian=H0,
+        hamiltonian_operators=hamiltonian_operators,
+        hamiltonian_channels=hamiltonian_channels,
+        channel_carrier_freqs=channel_carrier_freqs,
+        dt=dt,
+    )
+
+    # Dense, jax_expm
+    # -----
+    solver_closed_crosstalk.model.evaluation_mode = "dense"
+    sol_dense_expm_zz = solver_closed_crosstalk.solve(
+        t_span=[0.0, duration],
+        y0=y0,
+        signals=signals,
+        max_dt=dt,
+        t_eval=[0, duration],
+        method="jax_expm",
+        magnus_order=1,
+    )
+    # TODO: Actually expect failure... should lose fidelity
+    yf = sol_dense_expm_zz.y[-1].data
+    assert np.isclose(abs(yf @ yf_expected.conj().T) ** 2, 1.0)
+
+
+# def test_statevector_sim_open(self):
+#     r0 = pulse_simulator.qiskit_ground_state(self.registers, open=True)
+
+# def test_unitary_sim_closed(self):
+#     U0 = pulse_simulator.qiskit_identity_operator(self.registers)
+
+# def test_unitary_sim_open(self):
+#     C0 = pulse_simulator.qiskit_identity_operator(self.registers, open=True)

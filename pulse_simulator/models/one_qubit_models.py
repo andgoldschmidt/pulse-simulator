@@ -66,6 +66,8 @@ def rx_model(
     """Construct a single qubit model for pulse gates. This model is
     provided in the lab frame by default.
 
+    TODO: remove dependence on backend by handling channels via a lookup
+
     Arguments:
         qubit (Int) -- Qubit index
         registers (List[Int]) -- Qubits in circuit

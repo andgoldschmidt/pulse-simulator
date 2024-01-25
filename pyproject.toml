@@ -17,6 +17,7 @@ qiskit-dynamics = "^0.4.2"
 ipykernel = "^6.26.0"
 pylatexenc = "^2.10"
 jax = {extras = ["cpu"], version = "^0.4.20"}
+pytest = "^7.4.4"
 
 
 [build-system]
