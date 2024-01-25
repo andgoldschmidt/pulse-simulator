@@ -31,10 +31,15 @@ def units():
 
 @pytest.fixture
 def timing(backend, units):
-    ns = 1 / units
+    ns = units
     dt = backend.configuration().dt * ns
     duration = 225 * dt  # ns
     return {"dt": dt, "duration": duration}
+
+
+def test_timing(timing):
+    # Check for reasonable bounds on timesteps
+    assert 10**-2 < timing["dt"] < 10**2
 
 
 @pytest.fixture
@@ -43,6 +48,7 @@ def signals(registers, timing):
     duration = timing["duration"]
 
     # Play signals on all registers
+    # Implement an x-gate, no rotating frame 1/2 on the control H.
     x_gate = pulse_simulator.gaussian_envelope(dt, duration, angle=np.pi / 2)
     with pulse.build(name="Moment") as signals:
         for i in registers:
@@ -62,7 +68,7 @@ def one_qubit_model(registers, backend, config):
         registers=registers,
         backend=backend,
         variables=config,
-        rotating_frame=False,
+        rotating_frame=True,
     )
 
 
@@ -80,6 +86,13 @@ def crosstalk(registers, backend, config):
     return pulse_simulator.crosstalk_model(
         registers, pulse_simulator.backend_edges(backend), config
     )
+
+
+def test_nonzero_zz_crosstalk(crosstalk):
+    # Value could change if backend changes
+    assert np.max(np.abs(crosstalk.data)) > 0.0001
+    signature = np.sign(np.diag(np.real(crosstalk.data / crosstalk.data[0, 0])))
+    assert np.all(signature == [1, -1, -1, 1])
 
 
 @pytest.fixture
@@ -111,7 +124,7 @@ def one_qubit_solver(registers, one_qubit_model, one_qubit_decay, crosstalk):
 
 def test_statevector_sim_closed(registers, timing, signals, one_qubit_solver):
     y0 = pulse_simulator.qiskit_ground_state(len(registers))
-    yf_expected = np.array([0.0, 0.0, 0.0, 1.0])
+    probs_expected = np.array([0.0, 0.0, 0.0, 1.0])
 
     # Unpack timing parameters
     dt = timing["dt"]
@@ -119,6 +132,7 @@ def test_statevector_sim_closed(registers, timing, signals, one_qubit_solver):
 
     # Unpack solver parameters
     static_hamiltonian_drift = one_qubit_solver["static_hamiltonian_drift"]
+    static_hamiltonian_crosstalk = one_qubit_solver["static_hamiltonian_crosstalk"]
     hamiltonian_operators = one_qubit_solver["hamiltonian_operators"]
     hamiltonian_channels = one_qubit_solver["hamiltonian_channels"]
     channel_carrier_freqs = one_qubit_solver["channel_carrier_freqs"]
@@ -137,7 +151,7 @@ def test_statevector_sim_closed(registers, timing, signals, one_qubit_solver):
     # -----
     solver_closed_drift.model.evaluation_mode = "dense"
     sol_dense_expm = solver_closed_drift.solve(
-        t_span=[0.0, duration],
+        t_span=[0, duration],
         y0=y0,
         signals=signals,
         max_dt=dt,
@@ -146,44 +160,29 @@ def test_statevector_sim_closed(registers, timing, signals, one_qubit_solver):
         magnus_order=1,
     )
     yf = sol_dense_expm.y[-1].data
-    assert np.isclose(abs(yf @ yf_expected.conj().T) ** 2, 1.0)
+    probs_f = np.abs(yf) ** 2
+    assert np.isclose(np.abs(yf) ** 2, probs_expected, atol=1e-6).all()
 
     # Sparse, jax_odeint
     # -----
     solver_closed_drift.model.evaluation_mode = "sparse"
     sol_sparse_odeint = solver_closed_drift.solve(
-        t_span=[0.0, duration],
+        t_span=[0, duration],
+        t_eval=[0, duration],
         y0=y0,
         signals=signals,
-        t_eval=[0, duration],
         atol=1e-8,
         rtol=1e-8,
         method="jax_odeint",
     )
     yf = sol_sparse_odeint.y[-1].data
-    assert np.isclose(abs(yf @ yf_expected.conj().T) ** 2, 1.0)
-
-
-def test_statevector_sim_closed_crosstalk(registers, timing, signals, one_qubit_solver):
-    y0 = pulse_simulator.qiskit_ground_state(len(registers))
-    yf_expected = np.array([0.0, 0.0, 0.0, 1.0])
-
-    # Unpack timing parameters
-    dt = timing["dt"]
-    duration = timing["duration"]
-
-    # Unpack solver parameters
-    static_hamiltonian_drift = one_qubit_solver["static_hamiltonian_drift"]
-    static_hamiltonian_crosstalk = one_qubit_solver["static_hamiltonian_crosstalk"]
-    hamiltonian_operators = one_qubit_solver["hamiltonian_operators"]
-    hamiltonian_channels = one_qubit_solver["hamiltonian_channels"]
-    channel_carrier_freqs = one_qubit_solver["channel_carrier_freqs"]
+    assert np.isclose(np.abs(yf) ** 2, probs_f, atol=1e-6).all()
+    assert np.isclose(np.abs(yf) ** 2, probs_expected, atol=1e-6).all()
 
     # Closed, with crosstalk
     # =====
-    H0 = static_hamiltonian_drift.data + 100 * static_hamiltonian_crosstalk.data
     solver_closed_crosstalk = qiskit_dynamics.Solver(
-        static_hamiltonian=H0,
+        static_hamiltonian=static_hamiltonian_crosstalk,
         hamiltonian_operators=hamiltonian_operators,
         hamiltonian_channels=hamiltonian_channels,
         channel_carrier_freqs=channel_carrier_freqs,
@@ -194,17 +193,21 @@ def test_statevector_sim_closed_crosstalk(registers, timing, signals, one_qubit_
     # -----
     solver_closed_crosstalk.model.evaluation_mode = "dense"
     sol_dense_expm_zz = solver_closed_crosstalk.solve(
-        t_span=[0.0, duration],
+        t_span=[0, duration],
+        t_eval=[0, duration],
         y0=y0,
         signals=signals,
         max_dt=dt,
-        t_eval=[0, duration],
         method="jax_expm",
         magnus_order=1,
     )
-    # TODO: Actually expect failure... should lose fidelity
-    yf = sol_dense_expm_zz.y[-1].data
-    assert np.isclose(abs(yf @ yf_expected.conj().T) ** 2, 1.0)
+    # Loss of fidelity due to crosstalk
+    y_zz_f = sol_dense_expm_zz.y[-1].data
+    probs_zz_f = np.abs(y_zz_f) ** 2
+    assert not np.isclose(probs_zz_f, probs_f, atol=1e-6).all()
+
+    # But still close to expected
+    assert np.isclose(probs_f, probs_expected, atol=1e-3).all()
 
 
 # def test_statevector_sim_open(self):
