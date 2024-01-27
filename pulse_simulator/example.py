@@ -5,8 +5,6 @@ import qiskit.providers.fake_provider as qk_fp
 import numpy as np
 import csv
 import qiskit
-import matplotlib.pyplot as plt
-import scipy
 
 backend = qk_fp.FakeManila()
 units = 1e9
@@ -41,7 +39,6 @@ for i in range(N - 1):
     Hs_control += Hjs_control
     Hs_channels += Hjs_channel
     print(params)
-
 
 # Cross talk term: ζ ZZ
 # H_xtalk = ps.crosstalk_model(registers, ps.backend_edges(backend), config_vars)
