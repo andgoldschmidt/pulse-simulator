@@ -1,7 +1,7 @@
+import jax
 import qiskit
 import qiskit_dynamics
 import pulse_simulator as ps
-import numpy as np
 import matplotlib.pyplot as plt
 
 from qiskit import QuantumCircuit, QuantumRegister
@@ -13,9 +13,6 @@ from qiskit.transpiler.passes import RemoveBarriers
 
 from .compiler.scheduler import RobustScheduler
 
-# not sure if this should go here or where
-import jax
-
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_platform_name", "cpu")
 qiskit_dynamics.array.Array.set_default_backend("jax")
@@ -24,7 +21,6 @@ ONE_QUBIT_GATES = ["sx", "x"]
 TWO_QUBIT_GATES = ["ecr"]
 VIRTUAL_GATES = ["rz"]
 
-# custom types
 GATE_DICT = dict[int, str] | dict[tuple[int, int], str]
 VIRTUAL_ZS = dict[int, float]
 SINGLE_MOMENT = tuple[GATE_DICT, VIRTUAL_ZS]
@@ -32,6 +28,8 @@ CIRCUIT_MOMENTS = list[tuple[GATE_DICT, VIRTUAL_ZS]]
 
 
 class Simulator:
+    """A pulse simulator that uses qiskit-dynamics to simulate a given circuit."""
+
     def __init__(
         self, basis_gates: list[str], solver: qiskit_dynamics.Solver, backend: BackendV2
     ):
@@ -78,7 +76,7 @@ class Simulator:
         return scheduler.run(circuit)
 
     def simulate_circuit(
-        self, circuit: QuantumCircuit, draw: bool = False
+        self, circuit: QuantumCircuit, draw: bool = False, superop: bool = False
     ) -> DensityMatrix:
         # check that all pulses are loaded correctly
         pulses = self._pulses
@@ -99,11 +97,11 @@ class Simulator:
             n_qubits = moment[2]
             if n_qubits == 1:
                 op = self._simulate_one_qubit_moment(
-                    gates, virtual_zs, num_qubits, draw
+                    gates, virtual_zs, num_qubits, draw, superop
                 )
             if n_qubits == 2:
                 op = self._simulate_two_qubit_moment(
-                    gates, virtual_zs, num_qubits, draw
+                    gates, virtual_zs, num_qubits, draw, superop
                 )
             out = op @ out
 
@@ -115,6 +113,7 @@ class Simulator:
         virtual_zs: VIRTUAL_ZS,
         num_qubits: int,
         draw: bool = False,
+        superop: bool = False,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -125,16 +124,19 @@ class Simulator:
                 channel = qiskit.pulse.DriveChannel(qubit)
                 qiskit.pulse.play(pulses[gates[qubit]], channel)
 
-        U0 = ps.qiskit_identity_operator(num_qubits)
-        duration = pulse_moment.duration
+        y0 = ps.qiskit_identity_operator(num_qubits)
+        if superop:
+            y0 = qiskit.quantum_info.SuperOp(y0)
+            solver.model.evaluation_mode = "dense_vectorized"
 
         if draw:
             pulse_moment.draw()
             plt.show()
 
+        duration = pulse_moment.duration
         sol = solver.solve(
             t_span=[0.0, duration * dt],
-            y0=U0,
+            y0=y0,
             signals=pulse_moment,
             max_dt=dt,
             t_eval=[0.0, duration * dt],
@@ -156,6 +158,7 @@ class Simulator:
         virtual_zs: VIRTUAL_ZS,
         num_qubits: int,
         draw: bool = False,
+        superop: bool = False,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -191,11 +194,15 @@ class Simulator:
             pulse_moment.draw()
             plt.show()
 
-        U0 = ps.qiskit_identity_operator(num_qubits)
+        y0 = ps.qiskit_identity_operator(num_qubits)
+        if superop:
+            y0 = qiskit.quantum_info.SuperOp(y0)
+            solver.model.evaluation_mode = "dense_vectorized"
+
         duration = pulse_moment.duration
         sol = solver.solve(
             t_span=[0.0, duration * dt],
-            y0=U0,
+            y0=y0,
             signals=pulse_moment,
             max_dt=dt,
             t_eval=[0.0, duration * dt],
@@ -203,11 +210,6 @@ class Simulator:
             magnus_order=1,
         )
         op = sol.y[-1]
-
-        # qc = QuantumCircuit(num_qubits)
-        # for q0, q1 in gates:
-        #     qc.ecr(q0, q1)
-        # op = qiskit.quantum_info.Operator(qc).reverse_qargs()
 
         for i in range(num_qubits):
             if i not in virtual_zs:

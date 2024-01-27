@@ -15,13 +15,29 @@ from .passes import (
 
 
 class RobustScheduler:
+    """
+    A scheduler that takes in a circuit and schedules it for simulation with robust pulses, so that
+    we have moments of one- and two-qubit gates.
+    """
+
     def __init__(
         self,
         basis_gates: list[str],
         coupling_map: CouplingMap | None = None,
         reattach: bool = True,
         attach_final_virtual: bool = True,
-    ):
+    ) -> None:
+        """
+        Instantiate a `RobustScheduler` object.
+
+        Arguments:
+            basis_gates: The basis gates for the backend.
+            coupling_map: The coupling map for the backend.
+            reattach: Whether to reattach virtual gates after scheduling. If the gates are not
+                reattached, their information goes to the label of adjacent non-virtual gates.
+            attach_final_virtual: Whether to attach any pending virtual gates at the end of the
+                circuit.
+        """
         pm = PassManager(
             [
                 DeleteConsecutiveBarriers(),
@@ -39,6 +55,14 @@ class RobustScheduler:
         self._pm = pm
 
     def _transpile(self, qc: QuantumCircuit) -> QuantumCircuit:
+        """Private function to transpile a circuit to target gateset.
+
+        Arguments:
+            qc: The circuit to transpile.
+
+        Returns:
+            The transpiled circuit.
+        """
         basis_gates = self._basis_gates
         coupling_map = self._coupling_map
 
@@ -61,11 +85,31 @@ class RobustScheduler:
         return transpiled_qc
 
     def _schedule(self, qc: QuantumCircuit) -> QuantumCircuit:
+        """Private function to run the scheduling passes on a circuit.
+
+        Arguments:
+            qc: The circuit to schedule.
+
+        Returns:
+            The scheduled circuit.
+        """
         return self._pm.run(qc)
 
     def run(
         self, qc: QuantumCircuit, return_dag: bool = False
     ) -> QuantumCircuit | DAGCircuit:
+        """Run the scheduler on a circuit.
+
+        First tranpsiles the circuit to make sure it uses the target gateset and conforms to the
+        desired coupling map. Then, runs the scheduling passes to obtain the desired structure.
+
+        Arguments:
+            qc: The circuit to schedule.
+            return_dag: Whether to return the DAG instead of the circuit.
+
+        Returns:
+            Scheduled `DAGCircuit` or `QuantumCircuit`.
+        """
         transpiled_qc = self._transpile(qc)
 
         rz_pass = MergeAdjacentRzs()
