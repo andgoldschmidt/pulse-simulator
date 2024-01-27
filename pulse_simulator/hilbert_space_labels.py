@@ -37,7 +37,7 @@ def print_wavefunction(y, basis, tol=1e-9):
         y (NumPy.ndarray) -- Vector of coefficients
         basis (List[Str]) -- Vector of labels
     """
-    for val, ket in zip(y.data, basis):
+    for val, ket in zip(y, basis):
         if abs(val) > tol:
             print(f"{val:+.2f} |{ket}>")
 
@@ -49,8 +49,8 @@ def print_density_matrix(y, basis, tol=1e-9):
         y (NumPy.ndarray) -- Matrix of coefficients
         basis (List[Str]) -- Vector of labels
     """
-    dm_basis = '|' + basis[:, None] + '><' + basis + '|'
-    for row_val, row_ket in zip(y.data, dm_basis):
+    dm_basis = "|" + basis[:, None] + "><" + basis + "|"
+    for row_val, row_ket in zip(y, dm_basis):
         row_str = ""
         for rowcol_val, rowcol_ket in zip(row_val, row_ket):
             if abs(rowcol_val) > tol:

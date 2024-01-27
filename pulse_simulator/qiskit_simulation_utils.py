@@ -22,12 +22,18 @@ def rz_moment(virtual_zs, registers):
     return quantum_info.Operator(circuit)
 
 
-def qiskit_ground_state(n_qubits):
-    return quantum_info.states.Statevector(
-        functools.reduce(np.kron, np.repeat([[1, 0]], n_qubits, axis=0))
-    )
+def qiskit_ground_state(n_qubits, open=False):
+    psi = functools.reduce(np.kron, np.repeat([[1, 0]], n_qubits, axis=0))
+    if open:
+        return quantum_info.states.DensityMatrix(psi)
+    else:
+        return quantum_info.states.Statevector(psi)
 
 
-def qiskit_identity_operator(n_qubits):
+def qiskit_identity_operator(n_qubits, open=False):
     id_label = "".join(["I"] * n_qubits)
-    return quantum_info.Operator.from_label(id_label)
+    op = quantum_info.Operator.from_label(id_label)
+    if open:
+        return quantum_info.SuperOp(op)
+    else:
+        return op
