@@ -119,6 +119,8 @@ def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False)
     Returns:
         Qiskit custom pulse waveform implementing angle.
     """
+    assert len(signal) == duration, "Signal must be the same length as duration"
+
     if angle is None:
         amplitude = 1.0
     else:
@@ -126,3 +128,20 @@ def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False)
 
     w = pulse.Waveform(signal * amplitude, limit_amplitude=limit_amplitude)
     return set_limit_amplitude(w, limit_amplitude)
+
+
+def resample(duration, signal):
+    """Resample a signal to a new duration.
+
+    Arguments:
+        duration -- Integer pulse length in terms of the the sampling period dt.
+        signal -- Array of length duration
+
+    Returns:
+        Resampled signal.
+    """
+    return np.interp(
+        np.linspace(0, len(signal), duration, endpoint=False),
+        np.arange(len(signal)),
+        signal,
+    )
