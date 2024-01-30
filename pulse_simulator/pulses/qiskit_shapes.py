@@ -2,9 +2,18 @@ import functools
 import numpy as np
 from qiskit import pulse
 from scipy.integrate import simpson
+import sympy
 
-# NOTE: recommed returning qiskit.pulse.Waveform objects
 # TODO: Flat top gaussian pulse
+
+
+def get_samples(obj):
+    if isinstance(obj, pulse.Waveform):
+        return obj.samples
+    elif isinstance(obj, pulse.SymbolicPulse):
+        return obj.get_waveform().samples
+    else:
+        raise TypeError("Object is not a pulse waveform or symbolic pulse.")
 
 
 def get_amplitude_for_rotation(theta, signal, dt):
@@ -144,4 +153,55 @@ def resample(duration, signal):
         np.linspace(0, len(signal), duration, endpoint=False),
         np.arange(len(signal)),
         signal,
+    )
+
+
+def scalable_symbolic_pulse(duration, signal, pulse_type, name=None, degree=3):
+    """
+    Use spline interpolation to create a symbolic pulse from the signal.
+
+    Fit is given by spline of degree, passing through the given signal over the
+    provided duration.
+
+    Arguments:
+        duration -- Integer pulse length in terms of the the sampling period dt.
+        signal -- Array of length duration
+        pulse_type -- Display name of this pulse shape.
+
+    Keyword Arguments:
+        name --  Display name for this particular pulse envelope. (default: {None})
+        degree -- Degree of Bspline strictly greater than equal to one (default: {3})
+
+    Returns:
+        The ScalableSymbolicPulse representation model of the signal.
+
+    """
+    _t, _amp, _angle = sympy.symbols("t, amp, angle")
+
+    # 'post' steps
+    y_list = signal.tolist()
+    y_list = y_list + [y_list[-1]]
+    t_list = np.arange(0, duration + 1).tolist()
+
+    # fit a spline to the data (extrapolate with zeros)
+    spline_env = sympy.interpolating_spline(degree, _t, t_list, y_list)
+    env = (
+        _amp
+        * sympy.exp(sympy.I * _angle)
+        * sympy.Piecewise(
+            (spline_env, sympy.And(0 <= _t, _t <= duration + 1)), (0, True)
+        )
+    )
+
+    return pulse.ScalableSymbolicPulse(
+        pulse_type=pulse_type,
+        duration=duration,
+        amp=1.0,
+        angle=0.0,
+        parameters=None,
+        name=None,
+        limit_amplitude=None,
+        envelope=env,
+        constraints=None,
+        valid_amp_conditions=None,
     )
