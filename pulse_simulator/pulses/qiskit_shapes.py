@@ -1,8 +1,30 @@
 import functools
 import numpy as np
 from qiskit import pulse
+from scipy.integrate import simpson
 
+# NOTE: recommed returning qiskit.pulse.Waveform objects
 # TODO: Flat top gaussian pulse
+
+
+def get_amplitude_for_rotation(theta, signal, dt):
+    """Get the amplitude of a pulse to achieve a rotation.
+
+    Arguments:
+        theta -- Angle to rotate
+        signal -- Pulse signal
+        dt -- Timestep of the backend
+
+    Returns:
+        Amplitude of the pulse.
+    """
+    return theta / simpson(signal, dx=dt)
+
+
+def set_limit_amplitude(signal, limit_amplitude):
+    # A bug in Qiskit requires this to be set manually for Waveforms
+    signal.limit_amplitude = limit_amplitude
+    return signal
 
 
 def gaussian(x, mu=0, sigma=1):
@@ -19,45 +41,88 @@ def truncated_gaussian(x, mu=0, sigma=1):
     return g(x) - g(0)
 
 
-def gaussian_envelope(dt, duration, angle=np.pi):
+def gaussian_envelope(duration, dt=1.0, angle=np.pi, sigma=None, limit_amplitude=False):
     """Define gaussian envelope function to accumulate the angle.
 
     Arguments:
-        dt -- Timestep of the backend
-        duration -- Duration of the gate
+        duration -- Integer pulse length in terms of the the sampling period dt.
 
     Keyword Arguments:
+        dt -- Timestep of the backend (default: {1.0})
         angle -- Angle to rotate (default: {np.pi})
+        limit_amplitude -- Limit the amplitude to 1 (default: {False})
 
     Returns:
         Qiskit Gaussian pulse implementing angle.
     """
+    # Arbitrary default width
+    sigma = duration / 4 if sigma is None else sigma
 
-    steps = int(duration / dt)
-
-    # Arbitrary shape
-    # NOTE: Qiskit doesn't like pulse amplitudes > 1 by default
-    sigma = steps / 4
-    mu = steps / 2
+    # Fixed center
+    mu = duration / 2
 
     # Normalize
-    x = np.linspace(0, steps, endpoint=True)
-    area = np.trapz(lifted_gaussian(x, mu, sigma), x)
-    amplitude = angle / area / dt
+    signal = lifted_gaussian(np.arange(0, duration), mu, sigma)
+    amplitude = get_amplitude_for_rotation(angle, signal, dt)
 
     # Adjust the amplitude to achieve the angle
-    return pulse.Gaussian(steps, amplitude, sigma, limit_amplitude=False)
+    w = pulse.Waveform(signal * amplitude, limit_amplitude=limit_amplitude)
+    return set_limit_amplitude(w, limit_amplitude)
 
 
-def zero_envelope(dt, duration):
+def constant_envelope(duration, dt=1.0, angle=np.pi, limit_amplitude=False):
+    """Define constant envelope function to accumulate the angle.
+
+    Arguments:
+        duration -- Integer pulse length in terms of the the sampling period dt.
+
+    Keyword Arguments:
+        dt -- Timestep of the backend (default: {1.0})
+        angle -- Angle to rotate (default: {np.pi})
+        limit_amplitude -- Limit the amplitude to 1 (default: {False})
+
+    Returns:
+        Qiskit constant pulse implementing angle.
+    """
+    signal = np.ones(duration)
+    amplitude = get_amplitude_for_rotation(angle, signal, dt)
+
+    # Adjust the amplitude to achieve the angle
+    w = pulse.Constant(duration, amplitude, limit_amplitude=limit_amplitude)
+    return set_limit_amplitude(w, limit_amplitude)
+
+
+def zero_envelope(duration):
     """Define a zero envelope function.
 
     Arguments:
-        dt -- Timestep of the backend
-        duration -- Duration of the gate
+        duration -- Integer pulse length in terms of the the sampling period dt.
 
     Returns:
         Qiskit zero pulse.
     """
-    steps = int(duration / dt)
-    return pulse.Constant(steps, 0.0)
+    return pulse.Constant(duration, 0.0)
+
+
+def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False):
+    """Define a custom envelope function.
+
+    Arguments:
+        duration -- Integer pulse length in terms of the the sampling period dt.
+        signal -- Array of length duration
+
+    Keyword Arguments:
+        dt -- Timestep of the backend (default: {1.0})
+        angle -- Angle to rotate. If None, use the provided signal.  (default: {None})
+        limit_amplitude -- Limit the amplitude to 1 (default: {False})
+
+    Returns:
+        Qiskit custom pulse waveform implementing angle.
+    """
+    if angle is None:
+        amplitude = 1.0
+    else:
+        amplitude = get_amplitude_for_rotation(angle, signal, dt)
+
+    w = pulse.Waveform(signal * amplitude, limit_amplitude=limit_amplitude)
+    return set_limit_amplitude(w, limit_amplitude)
