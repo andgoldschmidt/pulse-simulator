@@ -139,21 +139,35 @@ def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False)
     return set_limit_amplitude(w, limit_amplitude)
 
 
-def resample(duration, signal):
-    """Resample a signal to a new duration.
+def resample(duration, signal, keep_step=True, return_step=False):
+    """Resample a signal to a new duration. Default behavior is to keep the
+    timestep and integral of the original signal, so integating the returned
+    signal with the original timestep will return the original area.
 
     Arguments:
         duration -- Integer pulse length in terms of the the sampling period dt.
         signal -- Array of length duration
 
+    Keyword Arguments:
+        return_step -- Return the timestep of the resampled signal (default: {False})
+        keep_step -- Preserve the timestep of the original signal (default: {True})
+
     Returns:
         Resampled signal.
     """
-    return np.interp(
-        np.linspace(0, len(signal), duration, endpoint=False),
+    new_times = np.linspace(0, len(signal), duration, endpoint=False)
+    Δt = new_times[1] - new_times[0]
+    resample = np.interp(
+        new_times,
         np.arange(len(signal)),
         signal,
     )
+    # Rescale the area to be the same as the original signal
+    resample = resample * Δt if keep_step else resample
+    if return_step:
+        return resample, Δt
+    else:
+        return resample
 
 
 def scalable_symbolic_pulse(duration, signal, pulse_type, name=None, degree=3):
