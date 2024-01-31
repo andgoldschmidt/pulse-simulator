@@ -170,12 +170,58 @@ def resample(duration, signal, keep_step=True, return_step=False):
         return resample
 
 
-def scalable_symbolic_pulse(duration, signal, pulse_type, name=None, degree=3):
+@functools.cache
+def fit_spline_envelope(t_tuple, y_tuple, degree):
+    """Fit a spline to the data. Tuples are immutable. Cache the spline fit to
+    avoid recomputation.
+
+    Arguments:
+        t_tuple -- Tuple of times
+        y_tuple -- Tuple of amplitudes
+        degree -- Degree of Bspline strictly greater than equal to one
+
+    Returns:
+
+    """
+    # Required symbols for Qiskit SymbolicPulse
+    _t, _amp, _angle = sympy.symbols("t, amp, angle")
+
+    t_list = list(t_tuple)
+    y_list = list(y_tuple)
+    spline_env = sympy.interpolating_spline(degree, _t, t_list, y_list)
+    env = (
+        _amp
+        * sympy.exp(sympy.I * _angle)
+        * sympy.Piecewise(
+            (spline_env, sympy.And(0 <= _t, _t <= len(t_list))), (0, True)
+        )
+    )
+    return env
+
+
+def scalable_symbolic_pulse(
+    duration,
+    signal,
+    pulse_type,
+    amp=1,
+    angle=0,
+    degree=3,
+    name=None,
+    limit_amplitude=False,
+):
     """
     Use spline interpolation to create a symbolic pulse from the signal.
 
     Fit is given by spline of degree, passing through the given signal over the
-    provided duration.
+    provided duration. The spline fit is memoized to avoid recomputation. The
+    spline is defined to be zero outside of the provided duration.
+
+    Scalable symbolic pulses are useful for working with pulse envelopes that
+    can be scaled to different amplitudes and angles. The pulse envelope is
+    defined using the provided signal. Amplitude and angle can be used to
+    rescale this envelope.
+
+    TODO: steps where=['post', 'pre', 'mid']
 
     Arguments:
         duration -- Integer pulse length in terms of the the sampling period dt.
@@ -190,31 +236,22 @@ def scalable_symbolic_pulse(duration, signal, pulse_type, name=None, degree=3):
         The ScalableSymbolicPulse representation model of the signal.
 
     """
-    _t, _amp, _angle = sympy.symbols("t, amp, angle")
-
     # 'post' steps
     y_list = signal.tolist()
-    y_list = y_list + [y_list[-1]]
-    t_list = np.arange(0, duration + 1).tolist()
+    ys = tuple(y_list + [y_list[-1]])
+    ts = tuple(np.arange(0, duration + 1))
 
     # fit a spline to the data (extrapolate with zeros)
-    spline_env = sympy.interpolating_spline(degree, _t, t_list, y_list)
-    env = (
-        _amp
-        * sympy.exp(sympy.I * _angle)
-        * sympy.Piecewise(
-            (spline_env, sympy.And(0 <= _t, _t <= duration + 1)), (0, True)
-        )
-    )
+    env = fit_spline_envelope(ts, ys, degree)
 
     return pulse.ScalableSymbolicPulse(
         pulse_type=pulse_type,
         duration=duration,
-        amp=1.0,
-        angle=0.0,
+        amp=amp,
+        angle=angle,
         parameters=None,
-        name=None,
-        limit_amplitude=None,
+        name=name,
+        limit_amplitude=limit_amplitude,
         envelope=env,
         constraints=None,
         valid_amp_conditions=None,
