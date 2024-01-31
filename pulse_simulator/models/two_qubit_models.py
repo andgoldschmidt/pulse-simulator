@@ -52,7 +52,7 @@ def crosstalk_model(registers, graph, variables):
     Returns:
         Operator of crosstalk
     """
-    operator = 0.0
+    operator = zero_operator(len(registers))
     for ZZ_edge in graph:
         if ZZ_edge[0] in registers and ZZ_edge[1] in registers:
             ZZ_value = zz_coupling(ZZ_edge, variables)
