@@ -4,7 +4,8 @@ from qiskit import pulse
 from scipy.integrate import simpson
 import sympy
 
-# TODO: Flat top gaussian pulse
+# TODO: Flat top gaussian envelope
+# TODO: Refactor angle to area (because qiskit uses angle for phase)
 
 
 def get_samples(obj):
@@ -12,6 +13,8 @@ def get_samples(obj):
         return obj.samples
     elif isinstance(obj, pulse.SymbolicPulse):
         return obj.get_waveform().samples
+    elif isinstance(obj, np.ndarray):
+        return obj
     else:
         raise TypeError("Object is not a pulse waveform or symbolic pulse.")
 
@@ -117,25 +120,29 @@ def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False)
     """Define a custom envelope function.
 
     Arguments:
-        duration -- Integer pulse length in terms of the the sampling period dt.
-        signal -- Array of length duration
+        duration -- Desired pulse length in terms of the the sampling period dt.
+        signal -- Array of samples. If the length does not match the duration,
+            the signal is resampled.
 
     Keyword Arguments:
-        dt -- Timestep of the backend (default: {1.0})
+        dt -- Timestep of the backend (default: {1.0}). Only used if angle is set.
         angle -- Angle to rotate. If None, use the provided signal.  (default: {None})
         limit_amplitude -- Limit the amplitude to 1 (default: {False})
 
     Returns:
         Qiskit custom pulse waveform implementing angle.
     """
-    assert len(signal) == duration, "Signal must be the same length as duration"
+    # Resample the signal to the new duration
+    if len(signal) != duration:
+        signal = resample(duration, signal)
 
+    # If angle is not provided, use the signal as is
     if angle is None:
         amplitude = 1.0
     else:
         amplitude = get_amplitude_for_rotation(angle, signal, dt)
 
-    w = pulse.Waveform(signal * amplitude, limit_amplitude=limit_amplitude)
+    w = pulse.Waveform(amplitude * signal, limit_amplitude=limit_amplitude)
     return set_limit_amplitude(w, limit_amplitude)
 
 
@@ -200,8 +207,7 @@ def fit_spline_envelope(t_tuple, y_tuple, degree):
 
 
 def scalable_symbolic_pulse(
-    duration,
-    signal,
+    signal: np.ndarray | pulse.Waveform,
     pulse_type,
     amp=1,
     angle=0,
@@ -210,22 +216,21 @@ def scalable_symbolic_pulse(
     limit_amplitude=False,
 ):
     """
-    Use spline interpolation to create a symbolic pulse from the signal.
+    Use spline interpolation to create a symbolic pulse from the provided signal.
 
     Fit is given by spline of degree, passing through the given signal over the
     provided duration. The spline fit is memoized to avoid recomputation. The
     spline is defined to be zero outside of the provided duration.
 
-    Scalable symbolic pulses are useful for working with pulse envelopes that
-    can be scaled to different amplitudes and angles. The pulse envelope is
-    defined using the provided signal. Amplitude and angle can be used to
-    rescale this envelope.
+    Scalable symbolic pulses are useful when pulse envelopes are able to
+    be scaled to different amplitudes and angles. The pulse envelope is
+    defined using the provided signal, which is cached. Later, amplitude and
+    angle can be used to quickly rescale this envelope.
 
     TODO: steps where=['post', 'pre', 'mid']
 
     Arguments:
-        duration -- Integer pulse length in terms of the the sampling period dt.
-        signal -- Array of length duration
+        signal -- Array or Waveform representing the pulse envelope.
         pulse_type -- Display name of this pulse shape.
 
     Keyword Arguments:
@@ -236,8 +241,15 @@ def scalable_symbolic_pulse(
         The ScalableSymbolicPulse representation model of the signal.
 
     """
+    assert isinstance(signal, (np.ndarray, pulse.Waveform)), "Invalid signal type."
+    samples = get_samples(signal)
+
+    # Duration (in terms of the the sampling period dt).
+    duration = len(samples)
+
+    # Bump step by one for interpolation intervals
     # 'post' steps
-    y_list = signal.tolist()
+    y_list = samples.tolist()
     ys = tuple(y_list + [y_list[-1]])
     ts = tuple(np.arange(0, duration + 1))
 
