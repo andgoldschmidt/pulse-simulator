@@ -52,10 +52,10 @@ def qubit_decay_model(qubit, registers, variables):
         if t1 is not None:
             if 2 * t1 < t2:
                 raise ValueError(f"t1={t1}, t2={t2} does not fulfill 2*t1>t2")
-            T2_eff = 1 / (1 / t2 - 1 / 2 / t1)
+            t2_eff = 1 / (1 / t2 - 1 / 2 / t1)
         else:
-            T2_eff = t2
-        static_op += [1 / np.sqrt(2 * T2_eff) * 2 * from_label(dephase_label)]
+            t2_eff = t2
+        static_op += [1 / np.sqrt(2 * t2_eff) * 2 * from_label(dephase_label)]
 
     return static_op
 

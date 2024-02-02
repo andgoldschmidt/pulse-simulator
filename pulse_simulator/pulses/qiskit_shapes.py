@@ -207,7 +207,7 @@ def fit_spline_envelope(t_tuple, y_tuple, degree):
 
 
 def scalable_symbolic_pulse(
-    signal: np.ndarray | pulse.Waveform,
+    signal: np.ndarray | pulse.Waveform | pulse.SymbolicPulse,
     pulse_type,
     amp=1,
     angle=0,
@@ -230,7 +230,7 @@ def scalable_symbolic_pulse(
     TODO: steps where=['post', 'pre', 'mid']
 
     Arguments:
-        signal -- Array or Waveform representing the pulse envelope.
+        signal -- Array, Waveform, or SymbolicPulse representing the envelope.
         pulse_type -- Display name of this pulse shape.
 
     Keyword Arguments:
@@ -241,20 +241,25 @@ def scalable_symbolic_pulse(
         The ScalableSymbolicPulse representation model of the signal.
 
     """
-    assert isinstance(signal, (np.ndarray, pulse.Waveform)), "Invalid signal type."
+    assert isinstance(
+        signal, (np.ndarray, pulse.Waveform, pulse.SymbolicPulse)
+    ), "Invalid signal type."
     samples = get_samples(signal)
 
     # Duration (in terms of the the sampling period dt).
     duration = len(samples)
 
-    # Bump step by one for interpolation intervals
-    # 'post' steps
-    y_list = samples.tolist()
-    ys = tuple(y_list + [y_list[-1]])
-    ts = tuple(np.arange(0, duration + 1))
+    if isinstance(signal, pulse.SymbolicPulse):
+        env = signal.envelope
+    else:
+        # Bump step by one for interpolation intervals
+        # 'post' steps
+        y_list = samples.tolist()
+        ys = tuple(y_list + [y_list[-1]])
+        ts = tuple(np.arange(0, duration + 1))
 
-    # fit a spline to the data (extrapolate with zeros)
-    env = fit_spline_envelope(ts, ys, degree)
+        # fit a spline to the data (extrapolate with zeros)
+        env = fit_spline_envelope(ts, ys, degree)
 
     return pulse.ScalableSymbolicPulse(
         pulse_type=pulse_type,
