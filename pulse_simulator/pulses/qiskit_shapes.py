@@ -57,7 +57,7 @@ def gaussian_envelope(duration, dt=1.0, angle=np.pi, sigma=None, limit_amplitude
     """Define gaussian envelope function to accumulate the angle.
 
     Arguments:
-        duration -- Integer pulse length in terms of the the sampling period dt.
+        duration -- Integer pulse length in terms of the sampling period dt.
 
     Keyword Arguments:
         dt -- Timestep of the backend (default: {1.0})
@@ -120,7 +120,7 @@ def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False)
     """Define a custom envelope function.
 
     Arguments:
-        duration -- Desired pulse length in terms of the the sampling period dt.
+        duration -- Desired pulse length in terms of the sampling period dt.
         signal -- Array of samples. If the length does not match the duration,
             the signal is resampled.
 
@@ -149,10 +149,12 @@ def custom_envelope(duration, signal, dt=1.0, angle=None, limit_amplitude=False)
 def resample(duration, signal, keep_step=True, return_step=False):
     """Resample a signal to a new duration. Default behavior is to keep the
     timestep and integral of the original signal, so integating the returned
-    signal with the original timestep will return the original area.
+    signal with the original timestep will return the original area. Equivalently,
+    when keep_step is True, the amplitude of the resampled signal is scaled by
+    the ratio of the new and old timesteps.
 
     Arguments:
-        duration -- Integer pulse length in terms of the the sampling period dt.
+        duration -- Integer pulse length in terms of the sampling period dt.
         signal -- Array of length duration
 
     Keyword Arguments:
@@ -199,28 +201,30 @@ def fit_spline_envelope(t_tuple, y_tuple, degree):
     env = (
         _amp
         * sympy.exp(sympy.I * _angle)
-        * sympy.Piecewise(
-            (spline_env, sympy.And(0 <= _t, _t <= len(t_list))), (0, True)
-        )
+        * sympy.Piecewise((spline_env, sympy.And(0 <= _t, _t <= t_list[-1])), (0, True))
     )
     return env
 
 
 def scalable_symbolic_pulse(
+    duration: int,
     signal: np.ndarray | pulse.Waveform | pulse.SymbolicPulse,
-    pulse_type,
+    pulse_type: str,
     amp=1,
     angle=0,
     degree=3,
     name=None,
     limit_amplitude=False,
-):
+) -> pulse.ScalableSymbolicPulse:
     """
     Use spline interpolation to create a symbolic pulse from the provided signal.
 
     Fit is given by spline of degree, passing through the given signal over the
     provided duration. The spline fit is memoized to avoid recomputation. The
     spline is defined to be zero outside of the provided duration.
+
+    The provided signal can be any length. If the length does not match the
+    duration, the timesteps are rescaled.
 
     Scalable symbolic pulses are useful when pulse envelopes are able to
     be scaled to different amplitudes and angles. The pulse envelope is
@@ -230,6 +234,7 @@ def scalable_symbolic_pulse(
     TODO: steps where=['post', 'pre', 'mid']
 
     Arguments:
+        duration -- Integer pulse length in terms of the sampling period dt.
         signal -- Array, Waveform, or SymbolicPulse representing the envelope.
         pulse_type -- Display name of this pulse shape.
 
@@ -246,8 +251,11 @@ def scalable_symbolic_pulse(
     ), "Invalid signal type."
     samples = get_samples(signal)
 
-    # Duration (in terms of the the sampling period dt).
-    duration = len(samples)
+    if duration != len(samples):
+        # Timesteps are *not* in terms of the sampling period dt.
+        Δt = duration / len(samples)
+    else:
+        Δt = 1.0
 
     if isinstance(signal, pulse.SymbolicPulse):
         env = signal.envelope
@@ -255,8 +263,8 @@ def scalable_symbolic_pulse(
         # Bump step by one for interpolation intervals
         # 'post' steps
         y_list = samples.tolist()
-        ys = tuple(y_list + [y_list[-1]])
-        ts = tuple(np.arange(0, duration + 1))
+        ys = tuple(y_list + [0.0])
+        ts = tuple(Δt * np.arange(0, len(samples) + 1))
 
         # fit a spline to the data (extrapolate with zeros)
         env = fit_spline_envelope(ts, ys, degree)
