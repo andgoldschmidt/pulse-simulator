@@ -1,6 +1,6 @@
 import functools
 import numpy as np
-from qiskit.pulse import DriveChannel
+from qiskit.pulse.channels import ControlChannel, DriveChannel
 
 
 def backend_simulation_vars(backend, angular=False, rabi=False, units=1.0):
@@ -66,6 +66,15 @@ def vars_rabi(i):
 
 def vars_anharmonicity(i):
     return f"delta{i}"
+
+
+def get_channels(registers, backend, allowed_channels=(ControlChannel, DriveChannel)):
+    channel_dict = {}
+    for i in registers:
+        for ch in backend.configuration().get_qubit_channels(i):
+            if isinstance(ch, allowed_channels):
+                channel_dict[ch.name] = ch
+    return channel_dict
 
 
 def get_drive_channel(i, backend, name=False):
