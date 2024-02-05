@@ -10,13 +10,13 @@ def zero_operator(num_qubits):
     return Operator(np.zeros((2**num_qubits, 2**num_qubits)))
 
 
-def from_label(label, reverse=True):
+def from_label(label, reverse=False):
     """Return a tensor product of single-qubit operators.
 
     Args:
         label (Str) -- single-qubit operator string.
         reverse (Bool) -- whether to reverse the order of the qubits.
-            For Qiskit endianness, set reverse order to True.
+            For Qiskit endianness, set reverse order to True. Default is False.
 
     Returns:
         Operator -- The N-qubit operator.

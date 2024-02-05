@@ -12,7 +12,7 @@ import numpy as np
 import warnings
 
 
-def qubit_decay_model(qubit, registers, variables):
+def qubit_decay_model(qubit, registers, variables, qiskit_order=True):
     """Construct a single qubit error model for pulse gates from t1 and t2
     times. The functionality is similar to the behavior of QuTip pulse.
 
@@ -20,8 +20,9 @@ def qubit_decay_model(qubit, registers, variables):
         qubit (Int) -- Qubit index
         registers (List[Int]) -- Qubits in circuit
         variables (Dict{Str, Int}) -- Backend configuration properties.
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default True.
 
-    Keyword arguments:
+    Keyword variables:
         t1 [optional] (float) -- Damping decay constant.
         t2 [optional] (float) -- Dephasing decay constant.
 
@@ -47,7 +48,7 @@ def qubit_decay_model(qubit, registers, variables):
     # Construct dissipation operators (QuTip pulse)
     static_op = []
     if t1 is not None:
-        static_op += [1 / np.sqrt(t1) * from_label(damp_label)]
+        static_op += [1 / np.sqrt(t1) * from_label(damp_label, reverse=qiskit_order)]
     if t2 is not None:
         # Keep the total dephasing ~ exp(-t/t2)
         if t1 is not None:
@@ -56,7 +57,12 @@ def qubit_decay_model(qubit, registers, variables):
             t2_eff = 1 / (1 / t2 - 1 / 2 / t1)
         else:
             t2_eff = t2
-        static_op += [1 / np.sqrt(2 * t2_eff) * 2 * from_label(dephase_label)]
+        static_op += [
+            1
+            / np.sqrt(2 * t2_eff)
+            * 2
+            * from_label(dephase_label, reverse=qiskit_order)
+        ]
 
     return static_op
 
@@ -68,7 +74,7 @@ def rx_model(
     variables,
     rotating_frame=False,
     return_params=False,
-    qiskit_order=False,
+    qiskit_order=True,
 ):
     """Construct a single qubit model for pulse gates. This model is
     provided in the lab frame by default.
@@ -82,9 +88,9 @@ def rx_model(
             needed for drive channels.
         variables (Dict{Str, Int}) -- Backend configuration properties.
         rotating_frame (Bool) -- Use the rotating frame. Default false.
-        qiskit_order (Bool) -- Use Qiskit's endianness. Default false.
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default True.
 
-    Keyword arguments:
+    Keyword variables:
         frequency (float) -- Energy of qubit.
 
     Returns:
@@ -129,7 +135,7 @@ def rz_model(
     registers,
     backend,
     return_params=False,
-    qiskit_order=False,
+    qiskit_order=True,
 ):
     """Construct Z phase rotation gates.
 
@@ -138,9 +144,9 @@ def rz_model(
         registers (List[Int]) -- Qubits in circuit
         backend (qk.providers.fake_provider.FakePulseBackend) -- Backend
             needed for drive channels.
-        qiskit_order (Bool) -- Use Qiskit's endianness. Default false.
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default True.
 
-    Keyword arguments:
+    Keyword variables:
         frequency (float) -- Energy of qubit.
 
     Returns:

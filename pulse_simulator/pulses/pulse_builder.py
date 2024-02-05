@@ -126,7 +126,9 @@ def build_pulse_schedule(
             elif case == "phase":
                 play_phase_moment(moment, dt, registers, backend)
             elif case == "ecr":
-                play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend)
+                play_ecr_moment(
+                    moment, qubit_gates, cr_gates, registers, backend, dt=dt
+                )
             else:
                 raise ValueError("Invalid moment")
     return schedule
@@ -240,7 +242,7 @@ def fill_unplayed_phases(played_qubits, duration, registers, backend):
             pulse.play(zero_envelope(duration), phase_channel)
 
 
-def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend):
+def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend, dt=1.0):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
 
@@ -268,7 +270,7 @@ def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend):
     # Echo
     played_channels = []
     for qubit, gate_label in moment.items():
-        q0, q1 = qubit
+        q0, _ = qubit
         drive_channel = get_drive_channel(q0, backend)
         pulse.play(qubit_gates[gate_label], drive_channel)
         played_channels.append(drive_channel.name)
