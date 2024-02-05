@@ -107,7 +107,10 @@ def get_phase_channel(i, backend, name=False):
 
 def get_control_channel(c, t, backend, name=False):
     # Cross resonance channel
-    channels = backend.configuration().control_channels[(c, t)]
+    try:
+        channels = backend.configuration().control_channels[(c, t)]
+    except KeyError as e:
+        raise Exception(f"Backend edge not found for {c} and {t}") from e
     if name:
         return channels[0].name
     else:
