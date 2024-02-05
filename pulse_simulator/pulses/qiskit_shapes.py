@@ -5,7 +5,8 @@ from scipy.integrate import simpson
 import sympy
 
 # TODO: Flat top gaussian envelope
-# TODO: Refactor angle to area (because qiskit uses angle for phase)
+# TODO: Refactor angle to area (because qiskit uses kw angle for phase)
+# TODO: Bug in SymbolicPulse.get_waveform(): Limit amplitude not passed.
 
 
 def get_samples(obj):
@@ -30,7 +31,12 @@ def get_amplitude_for_rotation(theta, signal, dt):
     Returns:
         Amplitude of the pulse.
     """
-    return theta / simpson(signal, dx=dt)
+    if len(signal) == 0:
+        raise ValueError("Signal is empty.")
+    elif len(signal) == 1:
+        return theta
+    else:
+        return theta / simpson(signal, dx=dt)
 
 
 def set_limit_amplitude(signal, limit_amplitude):
@@ -82,7 +88,7 @@ def gaussian_envelope(duration, dt=1.0, angle=np.pi, sigma=None, limit_amplitude
     return set_limit_amplitude(w, limit_amplitude)
 
 
-def constant_envelope(duration, dt=1.0, angle=np.pi, limit_amplitude=False):
+def constant_envelope(duration, dt=1.0, angle=np.pi, name=None, limit_amplitude=False):
     """Define constant envelope function to accumulate the angle.
 
     Arguments:
@@ -100,8 +106,14 @@ def constant_envelope(duration, dt=1.0, angle=np.pi, limit_amplitude=False):
     amplitude = get_amplitude_for_rotation(angle, signal, dt)
 
     # Adjust the amplitude to achieve the angle
-    w = pulse.Constant(duration, amplitude, limit_amplitude=limit_amplitude)
-    return set_limit_amplitude(w, limit_amplitude)
+    s = pulse.Constant(duration, amplitude, name=name, limit_amplitude=limit_amplitude)
+    try:
+        return s.get_waveform()
+    except pulse.PulseError:
+        # Older versions of Qiskit do not pass limit_amplitude correctly.
+        return pulse.Waveform(
+            amplitude * np.ones(duration), name=name, limit_amplitude=limit_amplitude
+        )
 
 
 def zero_envelope(duration):

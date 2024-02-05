@@ -1,6 +1,7 @@
 from .qiskit_operator_labels import from_label, to_label
 from .qiskit_backend_utils import (
     get_drive_channel,
+    get_phase_channel,
     vars_frequency,
     vars_rabi,
     vars_t1,
@@ -121,3 +122,37 @@ def rx_model(
         return drift_op, [control_op], [control_ch], params
     else:
         return drift_op, [control_op], [control_ch]
+
+
+def rz_model(
+    qubit,
+    registers,
+    backend,
+    return_params=False,
+    qiskit_order=False,
+):
+    """Construct Z phase rotation gates.
+
+    Arguments:
+        qubit (Int) -- Qubit index
+        registers (List[Int]) -- Qubits in circuit
+        backend (qk.providers.fake_provider.FakePulseBackend) -- Backend
+            needed for drive channels.
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default false.
+
+    Keyword arguments:
+        frequency (float) -- Energy of qubit.
+
+    Returns:
+        Drift operator, List[Control operators], List[Drive channels]
+    """
+    # Construct operator labels
+    phase_label = to_label({qubit: "Z"}, registers)
+    phase_op = from_label(phase_label, reverse=qiskit_order)
+    phase_ch = get_phase_channel(qubit, backend, name=True)
+    params = {phase_ch: f"Z_{qubit}"}
+
+    if return_params:
+        return phase_op, phase_ch, params
+    else:
+        return phase_op, phase_ch

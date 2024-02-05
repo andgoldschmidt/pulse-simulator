@@ -10,7 +10,7 @@ def zero_operator(num_qubits):
     return Operator(np.zeros((2**num_qubits, 2**num_qubits)))
 
 
-def from_label(label, reverse=False):
+def from_label(label, reverse=True):
     """Return a tensor product of single-qubit operators.
 
     Args:

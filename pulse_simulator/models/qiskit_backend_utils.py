@@ -2,6 +2,9 @@ import functools
 import numpy as np
 from qiskit.pulse.channels import ControlChannel, DriveChannel
 
+# Global offset for phase channels
+PHASE_CHANNEL_INDEX_SHIFT = 1000
+
 
 def backend_simulation_vars(backend, angular=False, rabi=False, units=1.0):
     """Extract variables for the pulse simulation from the backend.
@@ -87,6 +90,19 @@ def get_drive_channel(i, backend, name=False):
         return channels[0].name
     else:
         return channels[0]
+
+
+def get_phase_channel(i, backend, name=False):
+    # Arbitrary index shift based on device qubits
+    n = backend.configuration().n_qubits
+    index_shift = int(10 ** np.ceil(np.log10(n)))
+
+    # Phase is a mock drive channel
+    d = DriveChannel(i + index_shift)
+    if name:
+        return d.name
+    else:
+        return d
 
 
 def get_control_channel(c, t, backend, name=False):
