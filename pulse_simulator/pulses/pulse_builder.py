@@ -1,6 +1,7 @@
 from numbers import Number
 import numpy as np
 from qiskit import pulse, QuantumCircuit
+from qiskit.quantum_info import Operator
 import re
 
 from .qiskit_shapes import zero_envelope, constant_envelope
@@ -361,3 +362,16 @@ def build_circuit(moments, registers):
         else:
             raise ValueError(f"Unknown case: {case}")
     return circ
+
+
+def build_operator(moments, registers):
+    """Build a Qiskit operator from a list of moments.
+
+    Arguments:
+        moments -- the moments to be played in the circuit
+        registers -- the qubits used by the simulation
+
+    Returns:
+        A Qiskit operator with the moments applied
+    """
+    return Operator(build_circuit(moments, registers))
