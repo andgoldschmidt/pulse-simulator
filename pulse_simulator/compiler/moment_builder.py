@@ -62,7 +62,7 @@ class MomentBuilder:
                     qubit = qargs[0]
                     index = scheduled_dag.find_bit(qubit).index
                     color = one_q_coloring[index]
-                    gates_dict[index] = f"{gate.op.name}_{color}"
+                    gates_dict[index] = f"{gate.op.name}{color}".upper()
 
                     if virtual := gate.op.label:
                         virtual_zs.update(self._virtual_str_to_dict(virtual))
@@ -73,7 +73,7 @@ class MomentBuilder:
                     i0 = scheduled_dag.find_bit(q0).index
                     i1 = scheduled_dag.find_bit(q1).index
                     color = two_q_coloring[tuple({i0, i1})]
-                    gates_dict[(i0, i1)] = f"{gate.op.name}_{color}"
+                    gates_dict[(i0, i1)] = f"{gate.op.name}{color}".upper()
 
                     if virtuals := gate.op.label:
                         for virtual in virtuals.split("&"):
@@ -103,7 +103,7 @@ class MomentBuilder:
         self, n: int
     ) -> tuple[dict[int, str], dict[tuple[int, int], str]]:
         one_q_coloring = {
-            qubit: "red" if qubit % 2 == 0 else "blue" for qubit in range(n)
+            qubit: "1" if qubit % 2 == 0 else "2" for qubit in range(n)
         }
 
         flag = True
@@ -111,6 +111,6 @@ class MomentBuilder:
         for qubit in range(n - 1):
             if qubit % 2 == 0:
                 flag = not flag
-            two_q_coloring[tuple({qubit, qubit + 1})] = "blue" if flag else "red"
+            two_q_coloring[tuple({qubit, qubit + 1})] = "1" if flag else "2"
 
         return one_q_coloring, two_q_coloring
