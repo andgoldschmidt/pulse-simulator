@@ -1,6 +1,7 @@
 from numbers import Number
 import numpy as np
-from qiskit import pulse
+from qiskit import pulse, QuantumCircuit
+import re
 
 from .qiskit_shapes import zero_envelope, constant_envelope
 
@@ -202,7 +203,10 @@ def play_phase_moment(moment, dt, registers, backend):
     played_qubits = []
     for qubit, angle in moment.items():
         phase_channel = get_phase_channel(qubit, backend)
-        pulse.play(constant_envelope(1, angle=angle / dt, name="phase"), phase_channel)
+        # R_Z gates are played with 1/2 the value
+        pulse.play(
+            constant_envelope(1, angle=angle / 2 / dt, name="phase"), phase_channel
+        )
         played_qubits.append(qubit)
 
     fill_unplayed_phases(played_qubits, 1, registers, backend)
@@ -286,3 +290,74 @@ def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend, dt=1.0):
         played_channels.append(control_channel.name)
     fill_unplayed_phases([], duration_2qb, registers, backend)
     fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
+
+
+def parse_gate_label(label):
+    """Parse a gate label into a prefix and a number.
+
+    Arguments:
+        label -- the label to be parsed, e.g. SX1
+
+    Returns:
+        A tuple with the prefix and the number, e.g. ("SX", "1")
+    """
+    return re.match(r"([a-z]+)([0-9]+)", label, re.I).groups()
+
+
+def qiskit_gate_dispatch(label, q0, circuit, q1=None):
+    """Dispatch a gate to the Qiskit circuit.
+
+    Arguments:
+        label -- the label of the gate
+        q0 -- the qubit to be acted upon
+        circuit -- the Qiskit circuit
+
+    Keyword Arguments:
+        q1 -- the second qubit (default: {None})
+
+    Raises:
+        ValueError: if the gate label is unknown
+
+    Returns:
+        The Qiskit circuit with the gate applied
+    """
+    if label == "X":
+        return circuit.x(q0)
+    elif label == "SX":
+        return circuit.sx(q0)
+    elif label == "ECR":
+        return circuit.ecr(q0, q1)
+    else:
+        raise ValueError(f"Unknown gate: {label}")
+
+
+def build_circuit(moments, registers):
+    """Build a Qiskit circuit from a list of moments.
+
+    Arguments:
+        moments -- the moments to be played in the circuit
+        registers -- the qubits used by the simulation
+
+    Raises:
+        ValueError: if the moment type is unknown
+
+    Returns:
+        A Qiskit circuit with the moments applied
+    """
+    circ = QuantumCircuit(len(registers))
+
+    for moment in moments:
+        case = get_moment_case(moment)
+        if case == "single":
+            for q0, label in moment.items():
+                prefix = parse_gate_label(label)[0]
+                qiskit_gate_dispatch(prefix, q0, circ)
+        elif case == "phase":
+            for q0, value in moment.items():
+                circ.rz(value, q0)
+        elif case == "ecr":
+            for (q0, q1), label in moment.items():
+                qiskit_gate_dispatch(label="ECR", q0=q0, q1=q1, circuit=circ)
+        else:
+            raise ValueError(f"Unknown case: {case}")
+    return circ
