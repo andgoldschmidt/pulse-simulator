@@ -11,6 +11,7 @@ from .passes import (
     AttachVirtualGates,
     ExpandVirtualGates,
     MergeAdjacentRzs,
+    ForbidEndToEnd,
 )
 
 
@@ -96,7 +97,11 @@ class RobustScheduler:
         return self._pm.run(qc)
 
     def run(
-        self, qc: QuantumCircuit, return_dag: bool = False
+        self,
+        qc: QuantumCircuit,
+        separate_moments: bool = True,
+        no_end_to_end: bool = False,
+        return_dag: bool = False,
     ) -> QuantumCircuit | DAGCircuit:
         """Run the scheduler on a circuit.
 
@@ -105,6 +110,8 @@ class RobustScheduler:
 
         Arguments:
             qc: The circuit to schedule.
+            separate_moments: Whether to run separate one- and two-qubit moments.
+            no_end_to_end: Whether to get rid of any end-to-end connections between two-qubit gates.
             return_dag: Whether to return the DAG instead of the circuit.
 
         Returns:
@@ -120,18 +127,30 @@ class RobustScheduler:
         attached_dag = virtual_pass.run(merged_rzs)
         self._final_virtuals = virtual_pass.get_final_virtuals()
 
-        # Separate circuit into one- and two-qubit moments
-        separated_dag = SeparateMoments().run(attached_dag)
-        separated_qc = dag_to_circuit(separated_dag)
+        last_qc = dag_to_circuit(attached_dag)
+        if separate_moments:
+            # Separate circuit into one- and two-qubit moments
+            separate_pass = SeparateMoments()
+            separated_dag = separate_pass.run(attached_dag)
+            separated_qc = dag_to_circuit(separated_dag)
 
-        # Slide gates to be executed as soon as possible until no more changes are being done
-        flag = False
-        last_qc = separated_qc
-        while not flag:
-            next_qc = self._schedule(last_qc)
-            if str(next_qc.draw()) == str(last_qc.draw()):
-                flag = True
-            last_qc = next_qc
+            # Slide gates to be executed as soon as possible until no more changes are being done
+            flag = False
+            last_qc = separated_qc
+            while not flag:
+                next_qc = self._schedule(last_qc)
+                if str(next_qc.draw()) == str(last_qc.draw()):
+                    flag = True
+                last_qc = next_qc
+
+        if no_end_to_end:
+            # Get rid of any end-to-end connections between two-qubit gates
+            no_end_to_end_dag = ForbidEndToEnd().run(circuit_to_dag(last_qc))
+
+            # Attach any virtual gates that appeared
+            attached_dag = virtual_pass.run(no_end_to_end_dag)
+            self._final_virtuals = virtual_pass.get_final_virtuals()
+            last_qc = dag_to_circuit(attached_dag)
 
         expand_pass = ExpandVirtualGates()
         # Reattach virtual gates only if indicated

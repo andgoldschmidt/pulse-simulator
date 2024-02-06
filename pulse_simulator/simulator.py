@@ -69,14 +69,20 @@ class Simulator:
             raise Exception(f"Pulse {name} not required for simulation.")
         self._pulses[name] = pulse
 
-    def get_compiled_circuit(self, circuit: QuantumCircuit) -> QuantumCircuit:
+    def get_compiled_circuit(
+        self, circuit: QuantumCircuit, separate_moments: bool = True
+    ) -> QuantumCircuit:
         circuit = RemoveBarriers()(circuit)
         # use scheduler that will attach all virtual gates
         scheduler = RobustScheduler(basis_gates=self._basis_gates)
-        return scheduler.run(circuit)
+        return scheduler.run(circuit, separate_moments=separate_moments)
 
     def simulate_circuit(
-        self, circuit: QuantumCircuit, draw: bool = False, superop: bool = False
+        self,
+        circuit: QuantumCircuit,
+        draw: bool = False,
+        superop: bool = False,
+        separate_moments: bool = True,
     ) -> DensityMatrix:
         # check that all pulses are loaded correctly
         pulses = self._pulses
@@ -86,7 +92,7 @@ class Simulator:
                 raise Exception(f"Pulse {gate_name} not loaded.")
 
         # get moments dicts from scheduler
-        moments = self._get_moments(circuit=circuit)
+        moments = self._get_moments(circuit=circuit, separate_moments=separate_moments)
 
         # simulate each moment
         num_qubits = circuit.num_qubits
@@ -218,13 +224,17 @@ class Simulator:
 
         return op @ rzs
 
-    def _get_moments(self, circuit: QuantumCircuit) -> CIRCUIT_MOMENTS:
+    def _get_moments(
+        self, circuit: QuantumCircuit, separate_moments: bool = True
+    ) -> CIRCUIT_MOMENTS:
         n = circuit.num_qubits
         one_q_coloring, two_q_coloring = self._get_coloring(n)
 
         # scheduled circuits and get output dag
         circuit = RemoveBarriers()(circuit)
-        scheduled_dag = self._scheduler.run(circuit, return_dag=True)
+        scheduled_dag = self._scheduler.run(
+            circuit, separate_moments=separate_moments, return_dag=True
+        )
         subdags: list[DAGCircuit] = [layer["graph"] for layer in scheduled_dag.layers()]
 
         # build moments dicts

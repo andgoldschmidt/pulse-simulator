@@ -12,7 +12,7 @@ ns = units
 dt = backend.configuration().dt * ns
 print("dt: ", dt)
 
-N = 2 # number of spins
+N = 4 # number of spins
 
 registers = [i for i in range(N)]
 config_vars = ps.backend_simulation_vars(backend, rabi=False, units=units)
@@ -31,14 +31,32 @@ H_drift = 0.0
 Hs_control = []
 Hs_channels = []
 for i in range(N - 1):
-    control, target = i, i + 1
+    # control-target
     Hj_drift, Hjs_control, Hjs_channel, params = cr_model(
-        (control, target), return_params=True
+        (i, i + 1), return_params=True
     )
     H_drift += Hj_drift
-    Hs_control += Hjs_control
-    Hs_channels += Hjs_channel
-    print(params)
+    for c_i in range(len(Hjs_channel)):
+        if Hjs_channel[c_i] in Hs_channels:
+            continue
+        else:
+            # print(Hjs_channel[c_i])
+            Hs_control += [Hjs_control[c_i]]
+            Hs_channels += [Hjs_channel[c_i]]
+    # print(params)
+
+    # target-control
+    Hj_drift, Hjs_control, Hjs_channel, params = cr_model(
+        (i + 1, i), return_params=True
+    )
+    H_drift += Hj_drift
+    for c_i in range(len(Hjs_channel)):
+        if Hjs_channel[c_i] in Hs_channels:
+            continue
+        else:
+            # print(Hjs_channel[c_i])
+            Hs_control += [Hjs_control[c_i]]
+            Hs_channels += [Hjs_channel[c_i]]
 
 # Cross talk term: ζ ZZ
 # H_xtalk = ps.crosstalk_model(registers, ps.backend_edges(backend), config_vars)
@@ -99,13 +117,14 @@ sim.set_pulse("zx-_red", rzx_n)
 
 qc = qiskit.QuantumCircuit(N)
 qc.ecr(0, 1)
+qc.ecr(3, 2)
 
 expected = qiskit.quantum_info.Operator(qc)
 
 print("\nCircuit to simulate: ")
 print(sim.get_compiled_circuit(qc).draw())
 
-out = sim.simulate_circuit(qc, draw=True)
+out = sim.simulate_circuit(qc, draw=False)
 
 print("Output operator:")
 print(np.round(out.data, 3), "\n")

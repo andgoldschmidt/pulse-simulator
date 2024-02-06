@@ -5,3 +5,4 @@ from .slide_two_q_ops import SlideTwoQubitOps
 from .attach_virtual import AttachVirtualGates
 from .expand_virtual import ExpandVirtualGates
 from .merge_rz import MergeAdjacentRzs
+from .forbid_end_to_end import ForbidEndToEnd
