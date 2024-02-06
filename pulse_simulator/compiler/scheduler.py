@@ -100,7 +100,7 @@ class RobustScheduler:
         self,
         qc: QuantumCircuit,
         separate_moments: bool = True,
-        no_end_to_end: bool = False,
+        no_end_to_end: bool = True,
         return_dag: bool = False,
     ) -> QuantumCircuit | DAGCircuit:
         """Run the scheduler on a circuit.
