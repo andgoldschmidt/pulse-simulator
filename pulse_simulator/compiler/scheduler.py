@@ -147,10 +147,8 @@ class RobustScheduler:
             # Get rid of any end-to-end connections between two-qubit gates
             no_end_to_end_dag = ForbidEndToEnd().run(circuit_to_dag(last_qc))
 
-            # Attach any virtual gates that appeared
-            attached_dag = virtual_pass.run(no_end_to_end_dag)
-            self._final_virtuals = virtual_pass.get_final_virtuals()
-            last_qc = dag_to_circuit(attached_dag)
+            # Reattach newly created Z gates
+            last_qc = dag_to_circuit(virtual_pass.run(no_end_to_end_dag))
 
         expand_pass = ExpandVirtualGates()
         # Reattach virtual gates only if indicated

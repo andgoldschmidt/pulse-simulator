@@ -80,7 +80,7 @@ class SlideOneQubitOps(TransformationPass):
                 two_q_moment = moments[i + 1][0]
 
             # slide back to available wires
-            if i > 1:
+            if i > 1 and last_one_q_moment is not None:
                 removed = []
                 for gate in one_q_moment[0].op_nodes():
                     if all([q not in used_qargs for q in gate.qargs]):
