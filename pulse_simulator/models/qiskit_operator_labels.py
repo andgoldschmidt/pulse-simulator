@@ -16,7 +16,7 @@ def from_label(label, reverse=False):
     Args:
         label (Str) -- single-qubit operator string.
         reverse (Bool) -- whether to reverse the order of the qubits.
-            For Qiskit endianness, set reverse order to True.
+            For Qiskit endianness, set reverse order to True. Default is False.
 
     Returns:
         Operator -- The N-qubit operator.

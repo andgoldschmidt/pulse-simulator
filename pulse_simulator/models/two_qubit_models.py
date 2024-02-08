@@ -39,7 +39,7 @@ def zz_coupling(edge, variables):
     return -2 * α * J12**2 / (Δ12**2 - α**2)
 
 
-def crosstalk_model(registers, graph, variables):
+def crosstalk_model(registers, graph, variables, qiskit_order=True):
     """The crosstalk Hamiltonian of the circuit. The crosstalk is limited
     to the active registers provided, even if the graph includes additional
     edges.
@@ -48,6 +48,7 @@ def crosstalk_model(registers, graph, variables):
         registers -- The allowed qubits from the backend.
         graph (List[Tuple(Int, Int)]) -- Undirected edge list
         variables (Dict{Str, Int}) -- Backend configuration properties.
+        qiskit_order (Bool) -- Use Qiskit's endianness. Default True.
 
     Returns:
         Operator of crosstalk
@@ -57,7 +58,7 @@ def crosstalk_model(registers, graph, variables):
         if ZZ_edge[0] in registers and ZZ_edge[1] in registers:
             ZZ_value = zz_coupling(ZZ_edge, variables)
             ZZ_label = to_label({i: "Z" for i in ZZ_edge}, registers)
-            operator += ZZ_value * from_label(ZZ_label)
+            operator += ZZ_value * from_label(ZZ_label, reverse=qiskit_order)
     return operator
 
 
@@ -68,7 +69,7 @@ def cross_resonance_model(
     variables,
     model_name="Toy",
     return_params=False,
-    qiskit_order=False,
+    qiskit_order=True,
 ):
     """Construct a two qubit model for pulse CR gates.
 
