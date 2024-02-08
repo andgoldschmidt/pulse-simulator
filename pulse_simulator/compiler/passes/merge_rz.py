@@ -34,7 +34,9 @@ class MergeAdjacentRzs(TransformationPass):
 
             for gate in subdag.op_nodes(include_directives=True):
                 if gate.op.name == "barrier":
-                    continue
+                    new_subdag.apply_operation_back(
+                        gate.op, qargs=gate.qargs, cargs=gate.cargs
+                    )
                 elif gate.op.name == "rz":
                     if gate.qargs[0] in cached_rzs:
                         cached_rzs[gate.qargs[0]] += gate.op.params[0]
@@ -43,9 +45,10 @@ class MergeAdjacentRzs(TransformationPass):
                 else:
                     for q in gate.qargs:
                         if q in cached_rzs:
-                            new_subdag.apply_operation_back(
-                                RZGate(cached_rzs[q]), qargs=(q,)
-                            )
+                            if cached_rzs[q] != 0:
+                                new_subdag.apply_operation_back(
+                                    RZGate(cached_rzs[q]), qargs=(q,)
+                                )
                             cached_rzs.pop(q)
                     new_subdag.apply_operation_back(
                         gate.op, qargs=gate.qargs, cargs=gate.cargs
