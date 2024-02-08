@@ -149,6 +149,7 @@ class RobustScheduler:
 
             # Reattach newly created Z gates
             last_qc = dag_to_circuit(virtual_pass.run(no_end_to_end_dag))
+            self._final_virtuals = virtual_pass.get_final_virtuals()
 
         expand_pass = ExpandVirtualGates()
         # Reattach virtual gates only if indicated
