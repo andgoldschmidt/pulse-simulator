@@ -33,8 +33,9 @@ def units():
 def timing(backend, units):
     ns = units
     dt = backend.configuration().dt * ns
-    duration = 225 * dt  # ns
-    return {"dt": dt, "duration": duration}
+    duration = 225
+    time = duration * dt  # ns
+    return {"dt": dt, "duration": duration, "time": time}
 
 
 def test_timing(timing):
@@ -49,11 +50,25 @@ def signals(registers, timing):
 
     # Play signals on all registers
     # Implement an x-gate, no rotating frame 1/2 on the control H.
-    x_gate = pulse_simulator.gaussian_envelope(dt, duration, angle=np.pi / 2)
+    x_gate = pulse_simulator.gaussian_envelope(duration, dt=dt, angle=np.pi / 2)
     with pulse.build(name="Moment") as signals:
         for i in registers:
             pulse.play(x_gate, pulse.DriveChannel(i))
     return signals
+
+
+def test_signals(signals, timing):
+    duration = timing["duration"]
+
+    # Check that the signals are non-empty
+    assert len(signals) > 0
+
+    # Check the duration of the schedule
+    assert signals.duration == duration
+
+    # Check that signals contain numbers (get the waveform object from signal schedule)
+    samples = pulse_simulator.get_samples(signals.instructions[0][1].pulse)
+    assert all([isinstance(s, (float, complex)) for s in samples])
 
 
 @pytest.fixture
@@ -232,13 +247,13 @@ def open_drift(timing, one_qubit_solver):
 def state_dense_closed_drift(initial_statevec, timing, signals, closed_drift):
     # Unpack timing parameters
     dt = timing["dt"]
-    duration = timing["duration"]
+    time = timing["time"]
 
     # Dense, jax_expm
     closed_drift.model.evaluation_mode = "dense"
     return closed_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_statevec,
         signals=signals,
         max_dt=dt,
@@ -249,13 +264,13 @@ def state_dense_closed_drift(initial_statevec, timing, signals, closed_drift):
 
 @pytest.fixture
 def state_sparse_closed_drift(initial_statevec, timing, signals, closed_drift):
-    duration = timing["duration"]
+    time = timing["time"]
 
     # Sparse, jax_odeint
     closed_drift.model.evaluation_mode = "sparse"
     return closed_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_statevec,
         signals=signals,
         atol=1e-16,
@@ -267,13 +282,13 @@ def state_sparse_closed_drift(initial_statevec, timing, signals, closed_drift):
 @pytest.fixture
 def state_dense_closed_crosstalk(initial_statevec, timing, signals, closed_crosstalk):
     dt = timing["dt"]
-    duration = timing["duration"]
+    time = timing["time"]
 
     # With crosstalk
     closed_crosstalk.model.evaluation_mode = "dense"
     return closed_crosstalk.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_statevec,
         signals=signals,
         max_dt=dt,
@@ -285,13 +300,13 @@ def state_dense_closed_crosstalk(initial_statevec, timing, signals, closed_cross
 @pytest.fixture
 def state_dense_open_drift(initial_statemat, timing, signals, open_drift):
     dt = timing["dt"]
-    duration = timing["duration"]
+    time = timing["time"]
 
     # With crosstalk
     open_drift.model.evaluation_mode = "dense_vectorized"
     return open_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_statemat,
         signals=signals,
         max_dt=dt,
@@ -302,13 +317,13 @@ def state_dense_open_drift(initial_statemat, timing, signals, open_drift):
 
 @pytest.fixture
 def state_sparse_open_drift(initial_statemat, timing, signals, open_drift):
-    duration = timing["duration"]
+    time = timing["time"]
 
     # With crosstalk
     open_drift.model.evaluation_mode = "sparse_vectorized"
     return open_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_statemat,
         signals=signals,
         atol=1e-16,
@@ -378,12 +393,12 @@ def test_state_sim_open(
 @pytest.fixture
 def unitary_dense_closed(initial_unitary, timing, signals, closed_drift):
     dt = timing["dt"]
-    duration = timing["duration"]
+    time = timing["time"]
 
     closed_drift.model.evaluation_mode = "dense"
     return closed_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_unitary,
         signals=signals,
         max_dt=dt,
@@ -394,12 +409,12 @@ def unitary_dense_closed(initial_unitary, timing, signals, closed_drift):
 
 @pytest.fixture
 def unitary_sparse_closed(initial_unitary, timing, signals, closed_drift):
-    duration = timing["duration"]
+    time = timing["time"]
 
     closed_drift.model.evaluation_mode = "sparse"
     return closed_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_unitary,
         signals=signals,
         atol=1e-16,
@@ -411,14 +426,14 @@ def unitary_sparse_closed(initial_unitary, timing, signals, closed_drift):
 @pytest.fixture
 def unitary_dense_open(initial_unitary, timing, signals, open_drift):
     dt = timing["dt"]
-    duration = timing["duration"]
+    time = timing["time"]
 
     initial_channel = quantum_info.SuperOp(initial_unitary)
 
     open_drift.model.evaluation_mode = "dense_vectorized"
     return open_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_channel,
         signals=signals,
         max_dt=dt,
@@ -429,14 +444,14 @@ def unitary_dense_open(initial_unitary, timing, signals, open_drift):
 
 @pytest.fixture
 def unitary_sparse_open(initial_unitary, timing, signals, open_drift):
-    duration = timing["duration"]
+    time = timing["time"]
 
     initial_channel = quantum_info.SuperOp(initial_unitary)
 
     open_drift.model.evaluation_mode = "sparse_vectorized"
     return open_drift.solve(
-        t_span=[0, duration],
-        t_eval=[0, duration],
+        t_span=[0, time],
+        t_eval=[0, time],
         y0=initial_channel,
         signals=signals,
         atol=1e-16,
