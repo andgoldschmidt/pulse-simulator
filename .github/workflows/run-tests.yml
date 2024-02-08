@@ -1,0 +1,60 @@
+name: Test
+
+# Push/pull overlap if PR is from the same repo,
+#  but pull_request is nec. for forks, etc.
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+        poetry-version: ["1.7.0"]
+
+    steps:
+      # ======
+      # Checkout, set up python
+      # ======
+      - name: Check out
+        uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      # ======
+      # Install and configure poetry
+      # ======
+      - name: Load cached Poetry installation
+        id: cached-poetry
+        uses: actions/cache@v3
+        with:
+          path: ~/.local  # the path depends on the OS
+          key: poetry-${{ matrix.poetry-version }}
+      - name: Install Poetry
+        if: steps.cached-poetry.outputs.cache-hit != 'true'
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ matrix.poetry-version }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      # ======
+      # Load cached venv if cache exists
+      # Install dependencies if cache does not exist
+      # ======
+      - name: Load cached venv
+        id: cached-poetry-dependencies-dev
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: dev-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies-dev.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction -E dev
+      # ======
+      # Run test suite
+      # TODO: output code coverage, --cov=<project-dir> --cov-report=xml
+      # https://github.com/marketplace/actions/install-poetry-action#codecov-upload
+      # ======
+      - name: Run tests
+        run: poetry run pytest
