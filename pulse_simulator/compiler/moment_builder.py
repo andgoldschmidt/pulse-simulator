@@ -1,9 +1,10 @@
-import pulse_simulator as ps
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.circuit import Qubit
+from qiskit.converters import dag_to_circuit
 from qiskit.dagcircuit import DAGCircuit
-from .scheduler import RobustScheduler
 from qiskit.transpiler.passes import RemoveBarriers
+
+from .scheduler import RobustScheduler
 
 ONE_QUBIT_GATES = ["sx", "x"]
 TWO_QUBIT_GATES = ["ecr"]
@@ -26,7 +27,7 @@ class MomentBuilder:
 
         Args:
             - basis_gates (list[str]): the basis gates to transpile to
-            - gate_durations (dict[int, int]): one- and two-qubit gates durations in dt 
+            - gate_durations (dict[int, int]): one- and two-qubit gates durations in dt
             units. By default, this is set to 50 for one qubit gates and 270 for two qubit gates.
         """
         # set scheduler to not attach virtual gates since we sill extract
@@ -45,7 +46,8 @@ class MomentBuilder:
         separate_moments: bool = True,
         no_end_to_end: bool = True,
         timed: bool = False,
-    ) -> CIRCUIT_MOMENTS | TIMED_CIRCUIT_MOMENTS: 
+        draw: bool = False,
+    ) -> CIRCUIT_MOMENTS | TIMED_CIRCUIT_MOMENTS:
         """Builds list of dictionary moments. The default format is:
         ```
         [
@@ -59,7 +61,7 @@ class MomentBuilder:
 
         Args:
             - circuit (QuantumCircuit): the input circuit
-            - separate_moments (bool): whether to separate one- and two-qubit gates into separate 
+            - separate_moments (bool): whether to separate one- and two-qubit gates into separate
             moments
             - no_end_to_end (bool): whether to forbid any adjacent two-qubit gates to have
             end-to-end connections
@@ -85,6 +87,8 @@ class MomentBuilder:
             no_end_to_end=no_end_to_end,
             return_dag=True,
         )
+        if draw:
+            print(dag_to_circuit(scheduled_dag).draw())
         subdags: list[DAGCircuit] = [layer["graph"] for layer in scheduled_dag.layers()]
 
         # build moments dicts
@@ -157,17 +161,19 @@ class MomentBuilder:
 
         return one_q_coloring, two_q_coloring
 
-    def _convert_to_timed(self, moments: CIRCUIT_MOMENTS, n_qubits: int) -> TIMED_CIRCUIT_MOMENTS:
+    def _convert_to_timed(
+        self, moments: CIRCUIT_MOMENTS, n_qubits: int
+    ) -> TIMED_CIRCUIT_MOMENTS:
         timed_moments: dict[int, dict[str]] = {i: {} for i in range(n_qubits)}
-        current_time: dict[int: float] = {i: 0 for i in range(n_qubits)}
+        current_time: dict[int:float] = {i: 0 for i in range(n_qubits)}
 
         gate_durations = self._gate_durations
         for moment in moments:
             for qubit in moment:
                 gate = moment[qubit]
-                if isinstance(gate, float): # virtual gates
+                if isinstance(gate, float):  # virtual gates
                     timed_moments[qubit].update({current_time[qubit]: gate})
-                    continue 
+                    continue
                 gate_name = gate[:-1].lower()
                 if gate_name in ONE_QUBIT_GATES:
                     timed_moments[qubit].update({current_time[qubit]: gate})
@@ -177,6 +183,6 @@ class MomentBuilder:
                     timed_moments[qubit[0]].update({gate_time: f"{gate}_0"})
                     timed_moments[qubit[1]].update({gate_time: f"{gate}_1"})
                     current_time[qubit[0]] = gate_time + gate_durations[2]
-                    current_time[qubit[1]] = gate_time + gate_durations[2]                    
+                    current_time[qubit[1]] = gate_time + gate_durations[2]
 
         return timed_moments
