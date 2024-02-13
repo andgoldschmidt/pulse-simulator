@@ -26,7 +26,7 @@ class MomentBuilder:
 
         Args:
             - basis_gates (list[str]): the basis gates to transpile to
-            - gate_durations (None | dict[int, int]): one- and two-qubit gates durations in dt 
+            - gate_durations (dict[int, int]): one- and two-qubit gates durations in dt 
             units. By default, this is set to 50 for one qubit gates and 270 for two qubit gates.
         """
         # set scheduler to not attach virtual gates since we sill extract
