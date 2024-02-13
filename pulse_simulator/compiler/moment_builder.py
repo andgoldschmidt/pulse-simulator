@@ -16,7 +16,11 @@ CIRCUIT_MOMENTS = list[tuple[GATE_DICT, VIRTUAL_ZS]]
 
 
 class MomentBuilder:
-    def __init__(self, basis_gates: list[str] = ["rz", "sx", "x", "ecr"]) -> None:
+    def __init__(
+        self,
+        basis_gates: list[str] = ["rz", "sx", "x", "ecr"],
+        gate_durations: None | dict[int, int] = None,
+    ) -> None:
         # set scheduler to not attach virtual gates since we sill extract
         # those from the label of the real gates and treat them accordingly
         self._scheduler = RobustScheduler(
@@ -25,12 +29,14 @@ class MomentBuilder:
             reattach=False,
             attach_final_virtual=False,
         )
+        self._gate_durations = gate_durations
 
     def build_moments(
         self,
         circuit: QuantumCircuit,
         separate_moments: bool = True,
         no_end_to_end: bool = True,
+        timed: bool = False,
     ) -> CIRCUIT_MOMENTS:
         n = circuit.num_qubits
         one_q_coloring, two_q_coloring = self._get_coloring(n)
@@ -90,6 +96,8 @@ class MomentBuilder:
                 virtual_zs.update(self._virtual_str_to_dict(final_virtuals[qubit]))
             moments.append(virtual_zs)
 
+        if timed:
+            return self._convert_to_timed(moments, n)
         return moments
 
     def _virtual_str_to_dict(self, virtual: str) -> dict[int, str]:
@@ -102,9 +110,7 @@ class MomentBuilder:
     def _get_coloring(
         self, n: int
     ) -> tuple[dict[int, str], dict[tuple[int, int], str]]:
-        one_q_coloring = {
-            qubit: "1" if qubit % 2 == 0 else "2" for qubit in range(n)
-        }
+        one_q_coloring = {qubit: "1" if qubit % 2 == 0 else "2" for qubit in range(n)}
 
         flag = True
         two_q_coloring = {}
@@ -114,3 +120,29 @@ class MomentBuilder:
             two_q_coloring[tuple({qubit, qubit + 1})] = "1" if flag else "2"
 
         return one_q_coloring, two_q_coloring
+
+    def _convert_to_timed(self, moments: CIRCUIT_MOMENTS, n_qubits: int):
+        if (gate_duration := self._gate_durations) is None:
+            gate_duration = {1: 50, 2: 270}  # in dt units
+        timed_moments: dict[int, dict[str]] = {i: {} for i in range(n_qubits)}
+        current_time: dict[int: float] = {i: 0 for i in range(n_qubits)}
+
+        for moment in moments:
+            for qubit in moment:
+                gate = moment[qubit]
+                if isinstance(gate, float):
+                    timed_moments[qubit].update({current_time[qubit]: gate})
+                    continue 
+
+                gate_name = gate[:-1].lower()
+                if gate_name in ONE_QUBIT_GATES:
+                    timed_moments[qubit].update({current_time[qubit]: gate})
+                    current_time[qubit] += gate_duration[1]
+                elif gate_name in TWO_QUBIT_GATES:
+                    gate_time = max([current_time[qubit[0]], current_time[qubit[1]]])
+                    timed_moments[qubit[0]].update({gate_time: f"{gate}_0"})
+                    timed_moments[qubit[1]].update({gate_time: f"{gate}_1"})
+                    current_time[qubit[0]] = gate_time + gate_duration[2]
+                    current_time[qubit[1]] = gate_time + gate_duration[2]                    
+
+        return timed_moments
