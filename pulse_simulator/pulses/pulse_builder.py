@@ -332,7 +332,7 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
         raise ValueError(f"Unknown gate: {label}")
 
 
-def build_circuit(moments, registers):
+def build_circuit(moments, registers, barriers=False):
     """Build a Qiskit circuit from a list of moments.
 
     Arguments:
@@ -361,6 +361,8 @@ def build_circuit(moments, registers):
                 qiskit_gate_dispatch(label="ECR", q0=q0, q1=q1, circuit=circ)
         else:
             raise ValueError(f"Unknown case: {case}")
+        if barriers:
+            circ.barrier()
     return circ
 
 
