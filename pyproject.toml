@@ -17,18 +17,24 @@ qutip = "^4.7.3"
 qiskit-dynamics = "^0.4.2"
 ipykernel = "^6.26.0"
 pylatexenc = "^2.10"
-jax = {extras = ["cpu"], version = "^0.4.20"}
+jax = {extras = ["cuda11_pip"], version = "^0.4.20"}
 sympy = "^1.12"
 qiskit-aer = "^0.13.2"
 tqdm = "^4.66.1"
 
 # dev
 pytest = {version="^7.4.4", optional = true}
+jaxlib = {version = "^0.4.23+cuda11.cudnn89", source = "jax"}
 
 
 [tool.poetry.extras]
 dev = ["pytest"]
 
+
+[[tool.poetry.source]]
+name = "jax"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+priority = "primary"
 
 [build-system]
 requires = ["poetry-core>=1.7.0"]
