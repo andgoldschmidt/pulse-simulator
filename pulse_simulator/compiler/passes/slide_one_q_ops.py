@@ -66,7 +66,7 @@ class SlideOneQubitOps(TransformationPass):
 
         # ensure we start with a one-qubit moment
         current_index = 0
-        if len(moments) > 1 and moments[0][1] == "two":
+        if moments[0][1] == "two":
             current_index += 1
 
         last_one_q_moment = None
