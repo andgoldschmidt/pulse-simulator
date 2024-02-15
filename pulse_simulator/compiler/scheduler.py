@@ -55,11 +55,12 @@ class RobustScheduler:
         self._attach_final_virtual = attach_final_virtual
         self._pm = pm
 
-    def _transpile(self, qc: QuantumCircuit) -> QuantumCircuit:
+    def _transpile(self, qc: QuantumCircuit, optimization_level: int = 1) -> QuantumCircuit:
         """Private function to transpile a circuit to target gateset.
 
         Arguments:
             qc: The circuit to transpile.
+            optimization_level: Optimization level to use in Qiskit's transpiler.
 
         Returns:
             The transpiled circuit.
@@ -81,7 +82,7 @@ class RobustScheduler:
             basis_gates=basis_gates,
             coupling_map=coupling_map,
             seed_transpiler=12345,  # set seed for testing
-            optimization_level=1,
+            optimization_level=optimization_level,
         )
         return transpiled_qc
 
@@ -102,6 +103,7 @@ class RobustScheduler:
         separate_moments: bool = True,
         no_end_to_end: bool = True,
         return_dag: bool = False,
+        optimization_level: int = 1,
     ) -> QuantumCircuit | DAGCircuit:
         """Run the scheduler on a circuit.
 
@@ -113,11 +115,12 @@ class RobustScheduler:
             separate_moments: Whether to run separate one- and two-qubit moments.
             no_end_to_end: Whether to get rid of any end-to-end connections between two-qubit gates.
             return_dag: Whether to return the DAG instead of the circuit.
+            optimization_level: Optimization level to use in Qiskit's transpiler.
 
         Returns:
             Scheduled `DAGCircuit` or `QuantumCircuit`.
         """
-        transpiled_qc = self._transpile(qc)
+        transpiled_qc = self._transpile(qc, optimization_level=optimization_level)
 
         rz_pass = MergeAdjacentRzs()
         merged_rzs = rz_pass.run(circuit_to_dag(transpiled_qc))
