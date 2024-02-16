@@ -42,19 +42,20 @@ def parse_moments(list_of_moments, registers):
     return case_list
 
 
-def duration_of_moments(list_of_moments, qubit_gates, cr_gates, registers):
-    """Get the duration of a list of moments.
+def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
+    """Get the list of durations corresponding to a list of moments.
+
+    Can be combined with accumulate to get the timestep after each moment.
 
     Arguments:
         list_of_moments -- the moments to be parsed
         qubit_gates -- the qubit pulse shapes
         cr_gates -- the signed CR pulses
-        registers -- the qubits used by the simulation
 
     Returns:
-        The duration of the moments
+        The list of durations of the moments
     """
-    duration = 0
+    durations = []
     duration_1qb = qubit_gates[next(iter(qubit_gates))].duration
     duration_2qb = cr_gates[next(iter(cr_gates))].duration
     types_and_durations = {
@@ -62,10 +63,10 @@ def duration_of_moments(list_of_moments, qubit_gates, cr_gates, registers):
         "ecr": 2 * duration_2qb + duration_1qb,
         "phase": 1,
     }
-    types_and_counts = parse_moments(list_of_moments, registers)
-    for case, count in types_and_counts.items():
-        duration += count * types_and_durations[case]
-    return duration
+    for moment in list_of_moments:
+        case = get_moment_case(moment)
+        durations.append(types_and_durations[case])
+    return durations
 
 
 def build_pulse_schedule(
