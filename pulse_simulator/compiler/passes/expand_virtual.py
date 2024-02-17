@@ -58,9 +58,12 @@ class ExpandVirtualGates(TransformationPass):
         return new_dag
 
     def handle_final_virtuals(
-        self, dag: DAGCircuit, final_virtuals: dict[Qubit, str]
+        self, dag: DAGCircuit, final_virtuals: dict[Qubit, str] | None
     ) -> DAGCircuit:
-        for qubit in final_virtuals:
-            operation, qargs = self._parse_name_to_instruction(final_virtuals[qubit])
-            dag.apply_operation_back(operation, qargs=qargs)
+        if final_virtuals is not None:
+            for qubit in final_virtuals:
+                operation, qargs = self._parse_name_to_instruction(
+                    final_virtuals[qubit]
+                )
+                dag.apply_operation_back(operation, qargs=qargs)
         return dag
