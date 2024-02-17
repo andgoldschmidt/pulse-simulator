@@ -13,12 +13,22 @@ from ..models.qiskit_backend_utils import (
     get_phase_channel,
 )
 
+VALID_GATE_NUMBERS = (1, 2)
+VALID_GATE_TYPES = ("X", "SX", "I", "ECR")
+VALID_MOMENT_TYPES = ("single", "ecr", "phase")
 
-VALID_MOMENT_TYPES = ["single", "ecr", "phase"]
+
+def default_coloring(qubit):
+    # TODO: This is a hacky way to determing device coloring
+    return 1 if qubit % 2 == 0 else 2
 
 
 def valid_moment_types():
     return VALID_MOMENT_TYPES
+
+
+def valid_gate_types():
+    return VALID_GATE_TYPES
 
 
 def parse_moments(list_of_moments, registers):
@@ -37,9 +47,77 @@ def parse_moments(list_of_moments, registers):
         check_moment(moment, registers)
         case = get_moment_case(moment)
         case_list[case] += 1
-        if case not in VALID_MOMENT_TYPES:
-            raise ValueError(f"Invalid moment type: {case}")
     return case_list
+
+
+def check_moment(moment, registers):
+    keys = list(moment.keys())
+    assert len(keys) > 0, "Empty moment"
+    played_keys = keys if np.isscalar(keys[0]) else flatten_tuples(keys)
+    assert len(played_keys) == len(
+        set(played_keys)
+    ), f"Multiple gates in {keys} involve the same qubit."
+    assert np.all([q in registers for q in played_keys]), f"Invalid qubit in {keys}"
+
+
+def check_gate_label(label, number, allowed_numbers=[1, 2]):
+    assert label in VALID_GATE_TYPES, f"Invalid gate label: {label}"
+    assert number in allowed_numbers, f"Invalid qubit number: {number}"
+
+
+def parse_gate_label(label):
+    """Parse a gate label into a prefix and a number.
+
+    Arguments:
+        label -- the label to be parsed, e.g. SX1
+
+    Returns:
+        A tuple with the prefix and the number, e.g. ("SX", "1")
+    """
+    label, number = re.match(r"([a-z]+)([0-9]+)", label, re.I).groups()
+    number = int(number)
+    check_gate_label(label, number)
+    return label, number
+
+
+def flatten_tuples(iter_of_tuples):
+    """Flatten an iterable of tuples into a list of elements
+
+    Arguments:
+        iter_of_tuples -- Iterable of tuples.
+
+    Returns:
+        List of elements.
+    """
+    return list(sum(iter_of_tuples, ()))
+
+
+def get_moment_case(moment):
+    """Get the type of a moment.
+
+    Arguments:
+        moment -- the moment to be checked
+
+    Returns:
+        "single" if the moment is a single qubit moment, "ecr" if it is a two
+        qubit moment, 'phase' if it is a Z gate moment.
+    """
+    index = next(iter(moment))
+    case = None
+    if np.isscalar(index):
+        if isinstance(moment[index], Number):
+            case = "phase"
+        else:
+            case = "single"
+    elif len(index) == 2:
+        case = "ecr"
+    else:
+        raise ValueError("Could not parse moment case.")
+
+    if case not in VALID_MOMENT_TYPES:
+        return f"Invalid moment type: {case}"
+    else:
+        return case
 
 
 def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
@@ -70,7 +148,14 @@ def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
 
 
 def build_pulse_schedule(
-    list_of_moments, qubit_gates, cr_gates, registers, backend, dt=1.0, name=None
+    list_of_moments,
+    qubit_gates,
+    cr_gates,
+    registers,
+    backend,
+    dt=1.0,
+    name=None,
+    coloring=default_coloring,
 ):
     """Build a pulse schedule from a list of moments. The moments themselves are
     dictionaries with qubit labels as keys and gate labels as values. The one qubit
@@ -85,11 +170,15 @@ def build_pulse_schedule(
     ```Python
         [
             {0: "X1", 1: "X2", 2: "X1", 3: "X2"},
-            {(0,1): "X1", (2,3): "X1"},
-            {(1,2): "X2"},
+            {(0,1): "ECR1", (2,3): "ECR1"},
+            {(1,2): "ECR2"},
             {0: "X1", 1: "SX2", 2: "SX1", 3: "X2"},
         ]
     ```
+
+    The coloring function is used to determine the pulse shapes to be played on idle
+    qubits during the echo. The coloring function should take a qubit index and return
+    an integer that is used to index the pulse shape types for that qubit.
 
     Supported moments are:
     - Single qubit gates `{qubit: gate_label}` of type `{int: str}`
@@ -114,6 +203,7 @@ def build_pulse_schedule(
     Keyword Arguments:
         name -- the schedule name (default: {None})
         dt -- simulation time step (see phase moments) (default: {1.0})
+        coloring -- the coloring rule for the qubits (default: {default_coloring})
 
     Returns:
         A pulse schedule
@@ -122,7 +212,6 @@ def build_pulse_schedule(
         for moment in list_of_moments:
             # Inspect format
             check_moment(moment, registers)
-
             case = get_moment_case(moment)
             if case == "single":
                 play_1qb_moment(moment, qubit_gates, registers, backend)
@@ -130,55 +219,17 @@ def build_pulse_schedule(
                 play_phase_moment(moment, dt, registers, backend)
             elif case == "ecr":
                 play_ecr_moment(
-                    moment, qubit_gates, cr_gates, registers, backend, dt=dt
+                    moment,
+                    qubit_gates,
+                    cr_gates,
+                    registers,
+                    coloring,
+                    backend,
+                    dt=dt,
                 )
             else:
                 raise ValueError("Invalid moment")
     return schedule
-
-
-def check_moment(moment, registers):
-    keys = list(moment.keys())
-    assert len(keys) > 0, "Empty moment"
-    played_keys = keys if np.isscalar(keys[0]) else flatten_tuples(keys)
-    assert len(played_keys) == len(
-        set(played_keys)
-    ), f"Multiple gates in {keys} involve the same qubit."
-    assert np.all([q in registers for q in played_keys]), f"Invalid qubit in {keys}"
-
-
-def flatten_tuples(iter_of_tuples):
-    """Flatten an iterable of tuples into a list of elements
-
-    Arguments:
-        iter_of_tuples -- Iterable of tuples.
-
-    Returns:
-        List of elements.
-    """
-    return list(sum(iter_of_tuples, ()))
-
-
-def get_moment_case(moment):
-    """Get the type of a moment.
-
-    Arguments:
-        moment -- the moment to be checked
-
-    Returns:
-        "single" if the moment is a single qubit moment, "ecr" if it is a two
-        qubit moment, 'phase' if it is a Z gate moment.
-    """
-    index = next(iter(moment))
-    if np.isscalar(index):
-        if isinstance(moment[index], Number):
-            return "phase"
-        else:
-            return "single"
-    elif len(index) == 2:
-        return "ecr"
-    else:
-        raise ValueError("Invalid moment")
 
 
 def play_1qb_moment(moment, qubit_gates, registers, backend):
@@ -248,7 +299,9 @@ def fill_unplayed_phases(played_qubits, duration, registers, backend):
             pulse.play(zero_envelope(duration), phase_channel)
 
 
-def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend, dt=1.0):
+def play_ecr_moment(
+    moment, qubit_gates, cr_gates, registers, coloring, backend, dt=1.0
+):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
 
@@ -257,6 +310,7 @@ def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend, dt=1.0):
         qubit_gates -- the qubit pulse shapes
         cr_gates -- the signed CR pulses
         registers -- the qubits used by the simulation
+        coloring -- the coloring rule for the qubits
         backend -- the Qiskit backend (for control channels)
     """
     # Gate durations
@@ -274,12 +328,20 @@ def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend, dt=1.0):
     fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
 
     # Echo
+    played_qubits = []
     played_channels = []
     for qubit, gate_label in moment.items():
+        ecr_label, number = parse_gate_label(gate_label)
         q0, _ = qubit
         drive_channel = get_drive_channel(q0, backend)
-        pulse.play(qubit_gates[gate_label], drive_channel)
+        pulse.play(qubit_gates[f"X{coloring(q0)}"], drive_channel)
+        played_qubits.append(q0)
         played_channels.append(drive_channel.name)
+    for q in registers:
+        if q not in played_qubits:
+            drive_channel = get_drive_channel(q, backend)
+            pulse.play(qubit_gates[f"I{coloring(q)}"], drive_channel)
+            played_channels.append(drive_channel.name)
     fill_unplayed_phases([], duration_1qb, registers, backend)
     fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
 
@@ -292,18 +354,6 @@ def play_ecr_moment(moment, qubit_gates, cr_gates, registers, backend, dt=1.0):
         played_channels.append(control_channel.name)
     fill_unplayed_phases([], duration_2qb, registers, backend)
     fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
-
-
-def parse_gate_label(label):
-    """Parse a gate label into a prefix and a number.
-
-    Arguments:
-        label -- the label to be parsed, e.g. SX1
-
-    Returns:
-        A tuple with the prefix and the number, e.g. ("SX", "1")
-    """
-    return re.match(r"([a-z]+)([0-9]+)", label, re.I).groups()
 
 
 def qiskit_gate_dispatch(label, q0, circuit, q1=None):
@@ -323,14 +373,19 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
     Returns:
         The Qiskit circuit with the gate applied
     """
+    if label not in VALID_GATE_TYPES:
+        raise ValueError(f"Invalid gate label: {label}")
+
     if label == "X":
         return circuit.x(q0)
     elif label == "SX":
         return circuit.sx(q0)
+    elif label == "I":
+        return circuit.id(q0)
     elif label == "ECR":
         return circuit.ecr(q0, q1)
     else:
-        raise ValueError(f"Unknown gate: {label}")
+        raise ValueError(f"No dispatch for gate label: {label}")
 
 
 def build_circuit(moments, registers, barriers=False):
