@@ -77,7 +77,7 @@ class MomentBuilder:
             Useful to set to 0 when sending circuits that are equal to the identity or for which
             you don't want any changes other than transpilation and scheduling. Defaults to 1.
             - draw (bool): whether to draw the circuit after scheduling.
-            
+
         Returns:
             Moments in the format specified by the `timed` flag.
         """
@@ -178,18 +178,30 @@ class MomentBuilder:
             for qubit in moment:
                 gate = moment[qubit]
                 if isinstance(gate, float):  # virtual gates
-                    if qubit in timed_moments and current_time[qubit] in timed_moments[qubit]:
+                    if (
+                        qubit in timed_moments
+                        and current_time[qubit] in timed_moments[qubit]
+                    ):
                         previous_gate = timed_moments[qubit][current_time[qubit]]
-                        timed_moments[qubit][current_time[qubit]] = (previous_gate, gate)
+                        timed_moments[qubit][current_time[qubit]] = (
+                            previous_gate,
+                            gate,
+                        )
                     else:
                         timed_moments[qubit].update({current_time[qubit]: gate})
                     continue
 
                 gate_name = gate[:-1].lower()
                 if gate_name in ONE_QUBIT_GATES:
-                    if qubit in timed_moments and current_time[qubit] in timed_moments[qubit]:
+                    if (
+                        qubit in timed_moments
+                        and current_time[qubit] in timed_moments[qubit]
+                    ):
                         previous_gate = timed_moments[qubit][current_time[qubit]]
-                        timed_moments[qubit][current_time[qubit]] = (previous_gate, gate)
+                        timed_moments[qubit][current_time[qubit]] = (
+                            previous_gate,
+                            gate,
+                        )
                     else:
                         timed_moments[qubit].update({current_time[qubit]: gate})
                     current_time[qubit] += gate_durations[1]
@@ -199,7 +211,7 @@ class MomentBuilder:
                     timed_moments[qubit[1]].update({gate_time: f"{gate}_1"})
                     current_time[qubit[0]] = gate_time + gate_durations[2]
                     current_time[qubit[1]] = gate_time + gate_durations[2]
-            
+
             # adjust time since moments are supposed to be parallel
             max_time = max([current_time[qubit] for qubit in current_time])
             for qubit in current_time:
