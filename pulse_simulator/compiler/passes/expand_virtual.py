@@ -4,6 +4,7 @@ from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.circuit import Operation, Gate
 from qiskit.circuit import Qubit
 from qiskit.circuit.library import RZGate
+import numpy as np
 
 
 class ExpandVirtualGates(TransformationPass):
@@ -46,7 +47,8 @@ class ExpandVirtualGates(TransformationPass):
                 if gate.op.label is not None:
                     for gate_string in gate.op.label.split("&"):
                         operation, qargs = self._parse_name_to_instruction(gate_string)
-                        new_subdag.apply_operation_back(operation, qargs=qargs)
+                        if not np.isclose(operation.params[0], 0):
+                            new_subdag.apply_operation_back(operation, qargs=qargs)
                     gate.op.label = None
                 new_subdag.apply_operation_back(
                     gate.op, qargs=gate.qargs, cargs=gate.cargs
@@ -56,9 +58,12 @@ class ExpandVirtualGates(TransformationPass):
         return new_dag
 
     def handle_final_virtuals(
-        self, dag: DAGCircuit, final_virtuals: dict[Qubit, str]
+        self, dag: DAGCircuit, final_virtuals: dict[Qubit, str] | None
     ) -> DAGCircuit:
-        for qubit in final_virtuals:
-            operation, qargs = self._parse_name_to_instruction(final_virtuals[qubit])
-            dag.apply_operation_back(operation, qargs=qargs)
+        if final_virtuals is not None:
+            for qubit in final_virtuals:
+                operation, qargs = self._parse_name_to_instruction(
+                    final_virtuals[qubit]
+                )
+                dag.apply_operation_back(operation, qargs=qargs)
         return dag

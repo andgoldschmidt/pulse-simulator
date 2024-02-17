@@ -55,7 +55,9 @@ class RobustScheduler:
         self._attach_final_virtual = attach_final_virtual
         self._pm = pm
 
-    def _transpile(self, qc: QuantumCircuit, optimization_level: int = 1) -> QuantumCircuit:
+    def _transpile(
+        self, qc: QuantumCircuit, optimization_level: int = 1
+    ) -> QuantumCircuit:
         """Private function to transpile a circuit to target gateset.
 
         Arguments:
@@ -120,20 +122,30 @@ class RobustScheduler:
         Returns:
             Scheduled `DAGCircuit` or `QuantumCircuit`.
         """
+        if no_end_to_end and not separate_moments:
+            raise ValueError(
+                "Cannot forbid end-to-end connections between two-qubit gates without separating "
+                "one- and two-qubit moments."
+            )
+
+        # Initialize all passes
+        expand_pass = ExpandVirtualGates()
+        rz_pass = MergeAdjacentRzs()
+        virtual_pass = AttachVirtualGates()
+        separate_pass = SeparateMoments()
+        forbid_end_to_end_pass = ForbidEndToEnd()
+
         transpiled_qc = self._transpile(qc, optimization_level=optimization_level)
 
-        rz_pass = MergeAdjacentRzs()
         merged_rzs = rz_pass.run(circuit_to_dag(transpiled_qc))
 
         # Attach virtual gates and keep track of any virtual gates at the end of the circuit
-        virtual_pass = AttachVirtualGates()
         attached_dag = virtual_pass.run(merged_rzs)
         self._final_virtuals = virtual_pass.get_final_virtuals()
 
         last_qc = dag_to_circuit(attached_dag)
         if separate_moments:
             # Separate circuit into one- and two-qubit moments
-            separate_pass = SeparateMoments()
             separated_dag = separate_pass.run(attached_dag)
             separated_qc = dag_to_circuit(separated_dag)
 
@@ -148,13 +160,19 @@ class RobustScheduler:
 
         if no_end_to_end:
             # Get rid of any end-to-end connections between two-qubit gates
-            no_end_to_end_dag = ForbidEndToEnd().run(circuit_to_dag(last_qc))
+            full_dag = expand_pass.handle_final_virtuals(
+                circuit_to_dag(last_qc), final_virtuals=self._final_virtuals
+            )
+            no_end_to_end_dag = forbid_end_to_end_pass.run(full_dag)
+
+            # Expand and merge any contiguous Z gates
+            expanded_dag = expand_pass.run(no_end_to_end_dag)
+            merged_rzs = rz_pass.run(expanded_dag)
 
             # Reattach newly created Z gates
-            last_qc = dag_to_circuit(virtual_pass.run(no_end_to_end_dag))
+            last_qc = dag_to_circuit(virtual_pass.run(merged_rzs))
             self._final_virtuals = virtual_pass.get_final_virtuals()
 
-        expand_pass = ExpandVirtualGates()
         # Reattach virtual gates only if indicated
         if not self._reattach:
             final_dag = circuit_to_dag(last_qc)

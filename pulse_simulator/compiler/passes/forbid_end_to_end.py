@@ -7,7 +7,6 @@ from qiskit.converters import dag_to_circuit, circuit_to_dag
 from qiskit import ClassicalRegister, transpile
 
 from .expand_virtual import ExpandVirtualGates
-from .attach_virtual import AttachVirtualGates
 
 
 class ForbidEndToEnd(TransformationPass):
@@ -77,13 +76,16 @@ class ForbidEndToEnd(TransformationPass):
                 transpiled_dag = circuit_to_dag(transpiled_qc)
 
                 # Make sure two-qubit gates are between barriers
-                reached_two_qubit = {i: False for i in range(dag.num_qubits())} 
+                reached_two_qubit = {i: False for i in range(dag.num_qubits())}
                 pending_operations = []
                 two_qubit_operations = []
                 for layer in transpiled_dag.serial_layers():
                     subdag = layer["graph"]
                     for gate in subdag.op_nodes(include_directives=True):
-                        if len(gate.qargs) == 1 and reached_two_qubit[gate.qargs[0].index]:
+                        if (
+                            len(gate.qargs) == 1
+                            and reached_two_qubit[gate.qargs[0].index]
+                        ):
                             new_subdag.apply_operation_back(
                                 gate.op, qargs=gate.qargs, cargs=gate.cargs
                             )
@@ -110,7 +112,7 @@ class ForbidEndToEnd(TransformationPass):
     def _check_connections(
         self, connections: list[tuple[int, int]]
     ) -> list[tuple[int, int]]:
-        previous_target = -2 # -1 would detect (x, 0) as invalid
+        previous_target = -2  # -1 would detect (x, 0) as invalid
         invalid_connections: list[tuple[int, int]] = []
 
         for connection in connections:
