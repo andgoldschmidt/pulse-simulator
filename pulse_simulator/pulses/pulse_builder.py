@@ -193,6 +193,9 @@ def build_pulse_schedule(
     Currently, this function is designed to play X and :math:`\sqrt{X}` gates
     during single qubit moments, and ECR gates during two qubit moments.
 
+    TODO:
+    - The coloring function should not be necessary? It seems impossible to avoid for ECR.
+
     Arguments:
         list_of_moments -- moments to be played in the circuit
         qubit_gates -- key, value pairs containing qubit pulse shapes
@@ -214,7 +217,7 @@ def build_pulse_schedule(
             check_moment(moment, registers)
             case = get_moment_case(moment)
             if case == "single":
-                play_1qb_moment(moment, qubit_gates, registers, backend)
+                play_1qb_moment(moment, qubit_gates, registers, coloring, backend)
             elif case == "phase":
                 play_phase_moment(moment, dt, registers, backend)
             elif case == "ecr":
@@ -232,7 +235,7 @@ def build_pulse_schedule(
     return schedule
 
 
-def play_1qb_moment(moment, qubit_gates, registers, backend):
+def play_1qb_moment(moment, qubit_gates, registers, coloring, backend):
     """To be run within a pulse.build block. Play a single qubit moment.
 
     Arguments:
@@ -242,9 +245,11 @@ def play_1qb_moment(moment, qubit_gates, registers, backend):
         backend -- the Qiskit backend (for control channels)
     """
     played_channels = []
+    played_qubits = []
     for qubit, gate_label in moment.items():
         drive_channel = get_drive_channel(qubit, backend)
         pulse.play(qubit_gates[gate_label], drive_channel)
+        played_qubits.append(qubit)
         played_channels.append(drive_channel.name)
 
     duration = qubit_gates[next(iter(qubit_gates))].duration
@@ -299,11 +304,41 @@ def fill_unplayed_phases(played_qubits, duration, registers, backend):
             pulse.play(zero_envelope(duration), phase_channel)
 
 
+def fill_unplayed_single_qubit_gates(
+    played_qubits, qubit_gates, registers, coloring, backend
+):
+    """
+    To be run within a pulse.build block. Play identity gates on any registers that
+    were not used in the moment. Use the coloring to determine the correct identity
+    gate to use.
+
+    Arguments:
+        played_qubits -- the qubits that were used in the moment
+        qubit_gates -- the qubit pulse shapes
+        registers -- the qubits used by the simulation
+        coloring -- the coloring rule for the qubits
+        backend -- the Qiskit backend (for control channels)
+
+    Returns:
+        A list of the channels that were played
+    """
+    played_channels = []
+    for q in registers:
+        if q not in played_qubits:
+            drive_channel = get_drive_channel(q, backend)
+            pulse.play(qubit_gates[f"I{coloring(q)}"], drive_channel)
+            played_channels.append(drive_channel.name)
+    return played_channels
+
+
 def play_ecr_moment(
     moment, qubit_gates, cr_gates, registers, coloring, backend, dt=1.0
 ):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
+
+    TODO: Currently the gate label is unused because there are not yet different types
+    of cross resonance pulses.
 
     Arguments:
         moment -- the moment to be played
@@ -319,7 +354,7 @@ def play_ecr_moment(
 
     # +ZX
     played_channels = []
-    for qubit, gate_label in moment.items():
+    for qubit, _ in moment.items():
         q0, q1 = qubit
         control_channel = get_control_channel(q0, q1, backend)
         pulse.play(cr_gates["+"], control_channel)
@@ -330,24 +365,21 @@ def play_ecr_moment(
     # Echo
     played_qubits = []
     played_channels = []
-    for qubit, gate_label in moment.items():
-        ecr_label, number = parse_gate_label(gate_label)
+    for qubit, _ in moment.items():
         q0, _ = qubit
         drive_channel = get_drive_channel(q0, backend)
         pulse.play(qubit_gates[f"X{coloring(q0)}"], drive_channel)
         played_qubits.append(q0)
         played_channels.append(drive_channel.name)
-    for q in registers:
-        if q not in played_qubits:
-            drive_channel = get_drive_channel(q, backend)
-            pulse.play(qubit_gates[f"I{coloring(q)}"], drive_channel)
-            played_channels.append(drive_channel.name)
     fill_unplayed_phases([], duration_1qb, registers, backend)
+    played_channels += fill_unplayed_single_qubit_gates(
+        played_qubits, qubit_gates, registers, coloring, backend
+    )
     fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
 
     # -ZX
     played_channels = []
-    for qubit, gate_label in moment.items():
+    for qubit, _ in moment.items():
         q0, q1 = qubit
         control_channel = get_control_channel(q0, q1, backend)
         pulse.play(cr_gates["-"], control_channel)
