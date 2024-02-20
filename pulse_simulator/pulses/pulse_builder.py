@@ -100,7 +100,7 @@ def build_pulse_schedule(
     Zero envelopes are played on the remaining channels to ensure that the schedule
     respects the ordering of the moments.
 
-    Currently, this function is designed to play X and :math:`\sqrt{X}` gates
+    Currently, this function is designed to play X and :math:`\\sqrt{X}` gates
     during single qubit moments, and ECR gates during two qubit moments.
 
     Arguments:
