@@ -16,3 +16,12 @@ def qiskit_closest_multiple_of_16(gate_time_si_units, backend):
             pulse.seconds_to_samples(gate_time_si_units)
         )
     return samples
+
+
+def qiskit_closest_multiple(gate_time_si_units, backend, granularity):
+    # https://qiskit.org/textbook/ch-quantum-hardware/calibrating-qubits-pulse.html
+    with pulse.build(name="seconds_to_samples", backend=backend) as _:
+        samples = get_closest_multiple_of(
+            pulse.seconds_to_samples(gate_time_si_units), granularity
+        )
+    return samples
