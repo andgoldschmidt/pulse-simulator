@@ -13,13 +13,11 @@ from ..models.qiskit_backend_utils import (
     get_phase_channel,
 )
 
-VALID_GATE_NUMBERS = (1, 2)
 VALID_GATE_TYPES = ("X", "SX", "I", "ECR")
 VALID_MOMENT_TYPES = ("single", "ecr", "phase")
 
 
-def default_coloring(qubit):
-    # TODO: This is a hacky way to determing device coloring
+def alternating_coloring(qubit):
     return 1 if qubit % 2 == 0 else 2
 
 
@@ -78,6 +76,56 @@ def parse_gate_label(label):
     number = int(number)
     check_gate_label(label, number)
     return label, number
+
+
+def color_moments(list_of_moments, coloring=alternating_coloring):
+    """Color the moments in a list of moments.
+
+    Arguments:
+        list_of_moments -- the moments to be colored
+
+    Keyword Arguments:
+        coloring -- the coloring rule for the qubits (default: {alternating_coloring})
+
+    Returns:
+        The colored moments
+    """
+    colored_moments = []
+    for moment in list_of_moments:
+        colored_moment = {}
+        case = get_moment_case(moment)
+        if case == "phase":
+            colored_moment = moment
+        elif case == "single":
+            for qubit, label in moment.items():
+                colored_moment[qubit] = f"{label}{coloring(qubit)}"
+        elif case == "ecr":
+            for qubits, label in moment.items():
+                colored_moment[qubits] = f"{label}{coloring(qubits[0])}"
+        colored_moments.append(colored_moment)
+    return colored_moments
+
+
+def uncolor_moments(list_of_moments):
+    """Remove the coloring from the moments in a list of moments.
+
+    Arguments:
+        list_of_moments -- the moments to be uncolored
+
+    Returns:
+        The uncolored moments
+    """
+    uncolored_moments = []
+    for moment in list_of_moments:
+        uncolored_moment = {}
+        if get_moment_case(moment) == "phase":
+            uncolored_moment = moment
+        else:
+            for qubit, label in moment.items():
+                prefix, _ = parse_gate_label(label)
+                uncolored_moment[qubit] = prefix
+        uncolored_moments.append(uncolored_moment)
+    return uncolored_moments
 
 
 def flatten_tuples(iter_of_tuples):
@@ -155,30 +203,36 @@ def build_pulse_schedule(
     backend,
     dt=1.0,
     name=None,
-    coloring=default_coloring,
+    insert_identities=True,
+    coloring=alternating_coloring,
+    verbose=True,
 ):
     """Build a pulse schedule from a list of moments. The moments themselves are
     dictionaries with qubit labels as keys and gate labels as values. The one qubit
     gates are indexed by integers and the two qubit gates are indexed by tuples.
     The values of the dictionaries are the labels of the pulse shapes to be played,
-    or in the case of the two qubit gates, the label of the single qubit gate to be
-    use for the echo.
+    or in the case of the two qubit gates, the label ECR.
 
     Moments should be exclusively single qubit or two qubit gates.
 
     For example, the following is a valid list of moments:
     ```Python
         [
-            {0: "X1", 1: "X2", 2: "X1", 3: "X2"},
-            {(0,1): "ECR1", (2,3): "ECR1"},
-            {(1,2): "ECR2"},
-            {0: "X1", 1: "SX2", 2: "SX1", 3: "X2"},
+            {0: "X", 1: "X", 2: "X", 3: "X"},
+            {(0,1): "ECR", (2,3): "ECR"},
+            {(1,2): "ECR"},
+            {0: "X", 1: "SX", 2: "SX", 3: "X"},
         ]
     ```
+    In this case, the coloring function will be used to determine the colored pulses.
+    The coloring function should take a qubit index and return an integer that is
+    used to index the pulse shape types for that qubit. The default coloring function
+    is `default_coloring`, which colors the qubits alternately.
 
-    The coloring function is used to determine the pulse shapes to be played on idle
-    qubits during the echo. The coloring function should take a qubit index and return
-    an integer that is used to index the pulse shape types for that qubit.
+    Optionally, `insert_identities` is a flag that determines whether identity gates
+    should be inserted for qubits that are not used in a moment. This is useful for ECR
+    gates, where an identity can be inserted for the qubit that is not being used in the
+    echo. The coloring function is used to determine the identity gates to be played.
 
     Supported moments are:
     - Single qubit gates `{qubit: gate_label}` of type `{int: str}`
@@ -193,8 +247,6 @@ def build_pulse_schedule(
     Currently, this function is designed to play X and :math:`\sqrt{X}` gates
     during single qubit moments, and ECR gates during two qubit moments.
 
-    TODO:
-    - The coloring function should not be necessary? It seems impossible to avoid for ECR.
 
     Arguments:
         list_of_moments -- moments to be played in the circuit
@@ -211,13 +263,22 @@ def build_pulse_schedule(
     Returns:
         A pulse schedule
     """
+    if verbose:
+        print(f"Building schedule with {len(list_of_moments)} moments. ")
+        print(f"\t Qubit gateset: {qubit_gates.keys()}")
+        print(f"\t CR gateset: {cr_gates.keys()}")
+        print(f"\t Registers: {registers}")
+        print(f"\t Insert identities? {insert_identities}")
+
     with pulse.build(name=name, backend=backend) as schedule:
         for moment in list_of_moments:
             # Inspect format
             check_moment(moment, registers)
             case = get_moment_case(moment)
             if case == "single":
-                play_1qb_moment(moment, qubit_gates, registers, coloring, backend)
+                play_1qb_moment(
+                    moment, qubit_gates, registers, coloring, insert_identities, backend
+                )
             elif case == "phase":
                 play_phase_moment(moment, dt, registers, backend)
             elif case == "ecr":
@@ -227,6 +288,7 @@ def build_pulse_schedule(
                     cr_gates,
                     registers,
                     coloring,
+                    insert_identities,
                     backend,
                     dt=dt,
                 )
@@ -235,25 +297,34 @@ def build_pulse_schedule(
     return schedule
 
 
-def play_1qb_moment(moment, qubit_gates, registers, coloring, backend):
+def play_1qb_moment(
+    moment, qubit_gates, registers, coloring, insert_identities, backend
+):
     """To be run within a pulse.build block. Play a single qubit moment.
 
     Arguments:
         moment -- the moment to be played
         qubit_gates -- the qubit pulse shapes
         registers -- the qubits used by the simulation
+        coloring -- the coloring rule for the qubits
+        insert_identities -- whether to insert identity gates for unplayed qubits
         backend -- the Qiskit backend (for control channels)
     """
     played_channels = []
     played_qubits = []
     for qubit, gate_label in moment.items():
         drive_channel = get_drive_channel(qubit, backend)
-        pulse.play(qubit_gates[gate_label], drive_channel)
+        pulse.play(qubit_gates[f"{gate_label}{coloring(qubit)}"], drive_channel)
         played_qubits.append(qubit)
         played_channels.append(drive_channel.name)
 
     duration = qubit_gates[next(iter(qubit_gates))].duration
     fill_unplayed_phases([], duration, registers, backend)
+    # Insert identities, or fill remaining unplayed channels
+    if insert_identities:
+        played_channels += fill_unplayed_single_qubit_gates(
+            played_qubits, qubit_gates, registers, coloring, backend
+        )
     fill_unplayed_channels(played_channels, duration, registers, backend)
 
 
@@ -332,7 +403,14 @@ def fill_unplayed_single_qubit_gates(
 
 
 def play_ecr_moment(
-    moment, qubit_gates, cr_gates, registers, coloring, backend, dt=1.0
+    moment,
+    qubit_gates,
+    cr_gates,
+    registers,
+    coloring,
+    insert_identities,
+    backend,
+    dt=1.0,
 ):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
@@ -346,6 +424,7 @@ def play_ecr_moment(
         cr_gates -- the signed CR pulses
         registers -- the qubits used by the simulation
         coloring -- the coloring rule for the qubits
+        insert_identities -- whether to insert identity gates for unplayed qubits
         backend -- the Qiskit backend (for control channels)
     """
     # Gate durations
@@ -365,16 +444,17 @@ def play_ecr_moment(
     # Echo
     played_qubits = []
     played_channels = []
-    for qubit, _ in moment.items():
+    for qubit, label in moment.items():
         q0, _ = qubit
         drive_channel = get_drive_channel(q0, backend)
         pulse.play(qubit_gates[f"X{coloring(q0)}"], drive_channel)
         played_qubits.append(q0)
         played_channels.append(drive_channel.name)
     fill_unplayed_phases([], duration_1qb, registers, backend)
-    played_channels += fill_unplayed_single_qubit_gates(
-        played_qubits, qubit_gates, registers, coloring, backend
-    )
+    if insert_identities:
+        played_channels += fill_unplayed_single_qubit_gates(
+            played_qubits, qubit_gates, registers, coloring, backend
+        )
     fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
 
     # -ZX
@@ -420,7 +500,7 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
         raise ValueError(f"No dispatch for gate label: {label}")
 
 
-def build_circuit(moments, registers, barriers=False):
+def build_circuit(moments, registers, includes_coloring=False, barriers=False):
     """Build a Qiskit circuit from a list of moments.
 
     Arguments:
@@ -439,7 +519,10 @@ def build_circuit(moments, registers, barriers=False):
         case = get_moment_case(moment)
         if case == "single":
             for q0, label in moment.items():
-                prefix = parse_gate_label(label)[0]
+                if includes_coloring:
+                    prefix = parse_gate_label(label)[0]
+                else:
+                    prefix = label
                 qiskit_gate_dispatch(prefix, q0, circ)
         elif case == "phase":
             for q0, value in moment.items():
