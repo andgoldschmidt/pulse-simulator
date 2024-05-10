@@ -36,7 +36,7 @@ def zz_coupling(edge, variables):
         raise e
 
     Δ12 = ω1 - ω2
-    return -2 * α * J12**2 / (Δ12**2 - α**2)
+    return 2 * α * J12**2 / (Δ12**2 - α**2)
 
 
 def crosstalk_model(registers, graph, variables, qiskit_order=True):
