@@ -36,6 +36,11 @@ name = "jax"
 url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
 priority = "primary"
 
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
 [build-system]
 requires = ["poetry-core>=1.7.0"]
 build-backend = "poetry.core.masonry.api"
