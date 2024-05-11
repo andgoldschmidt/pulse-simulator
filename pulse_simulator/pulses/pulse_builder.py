@@ -72,7 +72,10 @@ def parse_gate_label(label):
     Returns:
         A tuple with the prefix and the number, e.g. ("SX", "1")
     """
-    label, number = re.match(r"([a-z]+)([0-9]+)", label, re.I).groups()
+    try:
+        label, number = re.match(r"([a-z]+)([0-9]+)", label, re.I).groups()
+    except AttributeError:
+        raise ValueError(f"Gate label {label} is not prefix and number")
     number = int(number)
     check_gate_label(label, number)
     return label, number
@@ -268,7 +271,7 @@ def build_pulse_schedule(
         print(f"\t Qubit gateset: {qubit_gates.keys()}")
         print(f"\t CR gateset: {cr_gates.keys()}")
         print(f"\t Registers: {registers}")
-        print(f"\t Insert identities? {insert_identities}")
+        print(f"\t Insert identities: {insert_identities}")
 
     with pulse.build(name=name, backend=backend) as schedule:
         for moment in list_of_moments:
@@ -500,7 +503,9 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
         raise ValueError(f"No dispatch for gate label: {label}")
 
 
-def build_circuit(moments, registers, includes_coloring=False, barriers=False):
+def build_circuit(
+    moments, registers, includes_coloring=False, insert_identities=False, barriers=False
+):
     """Build a Qiskit circuit from a list of moments.
 
     Arguments:
@@ -518,12 +523,18 @@ def build_circuit(moments, registers, includes_coloring=False, barriers=False):
     for moment in moments:
         case = get_moment_case(moment)
         if case == "single":
+            played_qubits = []
             for q0, label in moment.items():
                 if includes_coloring:
                     prefix = parse_gate_label(label)[0]
                 else:
                     prefix = label
+                played_qubits.append(q0)
                 qiskit_gate_dispatch(prefix, q0, circ)
+            if insert_identities:
+                for q0 in registers:
+                    if q0 not in played_qubits:
+                        qiskit_gate_dispatch("I", q0, circ)
         elif case == "phase":
             for q0, value in moment.items():
                 circ.rz(value, q0)
