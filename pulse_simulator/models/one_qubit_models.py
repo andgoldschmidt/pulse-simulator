@@ -16,6 +16,23 @@ def qubit_decay_model(qubit, registers, variables, qiskit_order=True):
     """Construct a single qubit error model for pulse gates from t1 and t2
     times. The functionality is similar to the behavior of QuTip pulse.
 
+    Linblad master equation:
+     d_t ρ = -i[H, ρ] + ∑_k γ_k (A_k ρ A_k† - 1/2 {A_k† A_k, ρ})
+
+    with:
+        γ_k = √(1/T_k)
+        A_k = jump operators
+        T_k = decay times
+
+    Damping (T_1):
+        A_k = damp
+        T_k = T_1
+
+    Dephasing (T_2):
+        A_k = 2 * dephase
+        T_k = 2 T_eff
+        Εquivalently, d_t ρ = √(1/2T_eff) (Z ρ Z - ρ = Z ρ Z - 1/2 {Z† Z, ρ})
+
     Arguments:
         qubit (Int) -- Qubit index
         registers (List[Int]) -- Qubits in circuit
@@ -45,7 +62,7 @@ def qubit_decay_model(qubit, registers, variables, qiskit_order=True):
     damp_label = to_label({qubit: "D"}, registers)
     dephase_label = to_label({qubit: "1"}, registers)
 
-    # Construct dissipation operators (QuTip pulse)
+    # Construct dissipation operators (c.f. QuTip's pulse class)
     static_op = []
     if t1 is not None:
         static_op += [1 / np.sqrt(t1) * from_label(damp_label, reverse=qiskit_order)]
