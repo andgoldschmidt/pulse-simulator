@@ -6,7 +6,7 @@ import pytest
 
 @pytest.fixture
 def moment_builder():
-    return MomentBuilder(coupling_map=[[0, 1], [1, 2], [2, 3]])
+    return MomentBuilder()
 
 
 @pytest.fixture
