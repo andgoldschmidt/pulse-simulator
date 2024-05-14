@@ -48,6 +48,7 @@ class MomentBuilder:
         timed: bool = False,
         optimization_level: int = 1,
         draw: bool = False,
+        transpile_to_basis: bool = True,
     ) -> CIRCUIT_MOMENTS | TIMED_CIRCUIT_MOMENTS:
         """Builds list of dictionary moments. The default format is:
         ```
@@ -82,7 +83,6 @@ class MomentBuilder:
             Moments in the format specified by the `timed` flag.
         """
         n = circuit.num_qubits
-        one_q_coloring, two_q_coloring = self._get_coloring(n)
 
         # scheduled circuits and get output dag
         circuit = RemoveBarriers()(circuit)
@@ -92,6 +92,7 @@ class MomentBuilder:
             no_end_to_end=no_end_to_end,
             return_dag=True,
             optimization_level=optimization_level,
+            transpile_to_basis=transpile_to_basis,
         )
         if draw:
             print(dag_to_circuit(scheduled_dag).draw())
@@ -113,8 +114,7 @@ class MomentBuilder:
                 if len(qargs) == 1:
                     qubit = qargs[0]
                     index = scheduled_dag.find_bit(qubit).index
-                    color = one_q_coloring[index]
-                    gates_dict[index] = f"{gate.op.name}{color}".upper()
+                    gates_dict[index] = f"{gate.op.name}".upper()
 
                     if virtual := gate.op.label:
                         virtual_zs.update(self._virtual_str_to_dict(virtual))
@@ -124,8 +124,7 @@ class MomentBuilder:
                     q0, q1 = qargs[0], qargs[1]
                     i0 = scheduled_dag.find_bit(q0).index
                     i1 = scheduled_dag.find_bit(q1).index
-                    color = two_q_coloring[tuple({i0, i1})]
-                    gates_dict[(i0, i1)] = f"{gate.op.name}{color}".upper()
+                    gates_dict[(i0, i1)] = f"{gate.op.name}".upper()
 
                     if virtuals := gate.op.label:
                         for virtual in virtuals.split("&"):

@@ -106,6 +106,7 @@ class RobustScheduler:
         no_end_to_end: bool = True,
         return_dag: bool = False,
         optimization_level: int = 1,
+        transpile_to_basis: bool = True,
     ) -> QuantumCircuit | DAGCircuit:
         """Run the scheduler on a circuit.
 
@@ -135,7 +136,10 @@ class RobustScheduler:
         separate_pass = SeparateMoments()
         forbid_end_to_end_pass = ForbidEndToEnd()
 
-        transpiled_qc = self._transpile(qc, optimization_level=optimization_level)
+        if transpile_to_basis:
+            transpiled_qc = self._transpile(qc, optimization_level=optimization_level)
+        else:
+            transpiled_qc = qc
 
         merged_rzs = rz_pass.run(circuit_to_dag(transpiled_qc))
 
