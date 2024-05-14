@@ -6,7 +6,12 @@ import pytest
 
 @pytest.fixture
 def moment_builder():
-    return MomentBuilder()
+    return MomentBuilder(coupling_map=[[0, 1], [1, 2], [2, 3]])
+
+
+@pytest.fixture
+def cyclic_moment_builder():
+    return MomentBuilder(coupling_map=[[0, 1], [1, 2], [2, 3], [0, 3]])
 
 
 def test_moment_builder(moment_builder: MomentBuilder):
@@ -100,8 +105,10 @@ def test_only_two_qubit(moment_builder: MomentBuilder):
     assert moment_builder.build_moments(qc, timed=True) == expected
 
 
-def test_no_transpile(moment_builder: MomentBuilder):
-    # Build test circuit
+def test_no_transpile(
+    moment_builder: MomentBuilder, cyclic_moment_builder: MomentBuilder
+):
+    # Build test circuit with a cyclic connectivity
     registers = [0, 1, 2, 3]
     test_moments = [
         {0: "SX", 1: "SX", 2: "SX", 3: "SX"},
@@ -123,3 +130,19 @@ def test_no_transpile(moment_builder: MomentBuilder):
         optimization_level=None,
     )
     assert test_moments_after == test_moments
+
+    # Check that with the cyclic connectivity, the moments are the same
+    test_moments_connected = cyclic_moment_builder.build_moments(
+        circ,
+        no_end_to_end=False,
+        optimization_level=0,
+    )
+    assert test_moments_connected == test_moments
+
+    # But, without the expected connectivity, the moments are different
+    test_moments_disconnected = moment_builder.build_moments(
+        circ,
+        no_end_to_end=False,
+        optimization_level=0,
+    )
+    assert test_moments_disconnected != test_moments
