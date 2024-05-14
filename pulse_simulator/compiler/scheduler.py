@@ -1,3 +1,5 @@
+from typing import Union
+
 from qiskit import QuantumCircuit, transpile
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler import CouplingMap, PassManager
@@ -105,7 +107,7 @@ class RobustScheduler:
         separate_moments: bool = True,
         no_end_to_end: bool = True,
         return_dag: bool = False,
-        optimization_level: int = 1,
+        optimization_level: Union[int, None] = 1,
     ) -> QuantumCircuit | DAGCircuit:
         """Run the scheduler on a circuit.
 
@@ -135,7 +137,10 @@ class RobustScheduler:
         separate_pass = SeparateMoments()
         forbid_end_to_end_pass = ForbidEndToEnd()
 
-        transpiled_qc = self._transpile(qc, optimization_level=optimization_level)
+        if optimization_level is not None:
+            transpiled_qc = self._transpile(qc, optimization_level=optimization_level)
+        else:
+            transpiled_qc = qc
 
         merged_rzs = rz_pass.run(circuit_to_dag(transpiled_qc))
 
