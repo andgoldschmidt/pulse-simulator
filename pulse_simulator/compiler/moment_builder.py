@@ -56,10 +56,10 @@ class MomentBuilder:
         ```
         [
             {0: 1.5707963267948966, 1: -3.141592653589793},
-            {0: "SX1", 1: "SX2"},
+            {0: "SX", 1: "SX"},
             {1: -3.141592653589793},
-            {(0, 1): "ECR2"},
-            {0: "X1"},
+            {(0, 1): "ECR"},
+            {0: "X"},
         ]
         ```
 
@@ -73,8 +73,8 @@ class MomentBuilder:
                 example:
                 ```
                 {
-                    0: {0: "SX1", 50: "ECR2_0", 320: "X1", 370: "ECR2_1"},
-                    1: {0: "SX2", 50: "ECR2_1", 370: "ECR2_0", 640: "X2"},
+                    0: {0: "SX", 50: "ECR_0", 320: "X", 370: "ECR_1"},
+                    1: {0: "SX", 50: "ECR_1", 370: "ECR_0", 640: "X"},
                 }
                 ```
             -   optimization_level (Union[int, None]): the optimization level to use in
@@ -179,7 +179,7 @@ class MomentBuilder:
                         timed_moments[qubit].update({current_time[qubit]: gate})
                     continue
 
-                gate_name = gate[:-1].lower()
+                gate_name = gate.lower()
                 if gate_name in ONE_QUBIT_GATES:
                     if (
                         qubit in timed_moments
