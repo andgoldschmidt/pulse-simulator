@@ -1,5 +1,6 @@
 from qiskit import QuantumCircuit
 from pulse_simulator.compiler import MomentBuilder
+from pulse_simulator import build_circuit
 import pytest
 
 
@@ -97,3 +98,28 @@ def test_only_two_qubit(moment_builder: MomentBuilder):
         },
     }
     assert moment_builder.build_moments(qc, timed=True) == expected
+
+
+def test_no_transpile(moment_builder: MomentBuilder):
+    # Build test circuit
+    registers = [0, 1, 2, 3]
+    test_moments = [
+        {0: "SX", 1: "SX", 2: "SX", 3: "SX"},
+        {0: "SX", 1: "SX", 2: "SX", 3: "SX"},
+        {(0, 3): "ECR", (1, 2): "ECR"},
+    ]
+    circ = build_circuit(
+        test_moments,
+        registers,
+        insert_identities=False,
+        includes_coloring=False,
+        barriers=False,
+    )
+
+    # Check that no modifications occur
+    test_moments_after = moment_builder.build_moments(
+        circ,
+        no_end_to_end=False,
+        optimization_level=None,
+    )
+    assert test_moments_after == test_moments

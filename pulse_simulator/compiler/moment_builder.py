@@ -1,3 +1,5 @@
+from typing import Union
+
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.circuit import Qubit
 from qiskit.converters import dag_to_circuit
@@ -22,6 +24,7 @@ class MomentBuilder:
         self,
         basis_gates: list[str] = ["rz", "sx", "x", "ecr"],
         gate_durations: dict[int, int] = {1: 50, 2: 270},
+        coupling_map: Union[list[list[int]], None] = None,
     ) -> None:
         """Creates a `MomentBuilder` instance.
 
@@ -34,7 +37,7 @@ class MomentBuilder:
         # those from the label of the real gates and treat them accordingly
         self._scheduler = RobustScheduler(
             basis_gates=basis_gates,
-            coupling_map=None,
+            coupling_map=coupling_map,
             reattach=False,
             attach_final_virtual=False,
         )
@@ -46,9 +49,8 @@ class MomentBuilder:
         separate_moments: bool = True,
         no_end_to_end: bool = True,
         timed: bool = False,
-        optimization_level: int = 1,
+        optimization_level: Union[int, None] = 1,
         draw: bool = False,
-        transpile_to_basis: bool = True,
     ) -> CIRCUIT_MOMENTS | TIMED_CIRCUIT_MOMENTS:
         """Builds list of dictionary moments. The default format is:
         ```
@@ -62,22 +64,25 @@ class MomentBuilder:
         ```
 
         Args:
-            - circuit (QuantumCircuit): the input circuit
-            - separate_moments (bool): whether to separate one- and two-qubit gates into separate
-            moments
-            - no_end_to_end (bool): whether to forbid any adjacent two-qubit gates to have
-            end-to-end connections
-            - timed (bool): whether to return the moments in a timed format, for example:
-            ```
-            {
-                0: {0: "SX1", 50: "ECR2_0", 320: "X1", 370: "ECR2_1"},
-                1: {0: "SX2", 50: "ECR2_1", 370: "ECR2_0", 640: "X2"},
-            }
-            ```
-            - optimization_level (int): the optimization level to use in Qiskit's transpiler.
-            Useful to set to 0 when sending circuits that are equal to the identity or for which
-            you don't want any changes other than transpilation and scheduling. Defaults to 1.
-            - draw (bool): whether to draw the circuit after scheduling.
+            -   circuit (QuantumCircuit): the input circuit
+            -   separate_moments (bool): whether to separate one- and two-qubit gates
+                into separate moments
+            -   no_end_to_end (bool): whether to forbid any adjacent two-qubit gates to
+                have end-to-end connections
+            -   timed (bool): whether to return the moments in a timed format, for
+                example:
+                ```
+                {
+                    0: {0: "SX1", 50: "ECR2_0", 320: "X1", 370: "ECR2_1"},
+                    1: {0: "SX2", 50: "ECR2_1", 370: "ECR2_0", 640: "X2"},
+                }
+                ```
+            -   optimization_level (Union[int, None]): the optimization level to use in
+                Qiskit's transpiler. Useful to set to 0 when sending circuits that are
+                equal to the identity or for which you don't want any changes other than
+                transpilation and scheduling. Can be set to None if no transpilation is
+                desired. Defaults to 1.
+            -   draw (bool): whether to draw the circuit after scheduling.
 
         Returns:
             Moments in the format specified by the `timed` flag.
@@ -92,7 +97,6 @@ class MomentBuilder:
             no_end_to_end=no_end_to_end,
             return_dag=True,
             optimization_level=optimization_level,
-            transpile_to_basis=transpile_to_basis,
         )
         if draw:
             print(dag_to_circuit(scheduled_dag).draw())
@@ -150,21 +154,6 @@ class MomentBuilder:
         params = eval(processed[1])
         qargs = eval(processed[2])
         return {qargs._index: params[0]}
-
-    # TODO: generalize for any connectivity?
-    def _get_coloring(
-        self, n: int
-    ) -> tuple[dict[int, str], dict[tuple[int, int], str]]:
-        one_q_coloring = {qubit: "1" if qubit % 2 == 0 else "2" for qubit in range(n)}
-
-        flag = True
-        two_q_coloring = {}
-        for qubit in range(n - 1):
-            if qubit % 2 == 0:
-                flag = not flag
-            two_q_coloring[tuple({qubit, qubit + 1})] = "1" if flag else "2"
-
-        return one_q_coloring, two_q_coloring
 
     def _convert_to_timed(
         self, moments: CIRCUIT_MOMENTS, n_qubits: int
