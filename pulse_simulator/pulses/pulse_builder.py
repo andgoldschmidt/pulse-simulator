@@ -1,3 +1,4 @@
+from itertools import combinations
 from numbers import Number
 import numpy as np
 from qiskit import pulse, QuantumCircuit
@@ -7,6 +8,7 @@ import re
 from .qiskit_shapes import zero_envelope, constant_envelope
 
 from ..models.qiskit_backend_utils import (
+    backend_edges,
     get_channels,
     get_drive_channel,
     get_control_channel,
@@ -405,6 +407,44 @@ def fill_unplayed_single_qubit_gates(
     return played_channels
 
 
+def fill_unplayed_dd_gates(
+    played_channels,
+    played_pairs,
+    qubit_gates,
+    duration_1qb,
+    duration_2qb,
+    coloring,
+    registers,
+    backend,
+    verbose=False,
+):
+    # Zero (up to a 1QB gate)
+    fill_unplayed_channels(
+        played_channels, duration_2qb - duration_1qb, registers, backend
+    )
+
+    # Play X gates on any empty pairs
+    pointer_qubits = [q for _, q in played_pairs]
+    dd_qubits = [q for q in registers if q not in flatten_tuples(played_pairs)]
+    edges = backend_edges(backend)
+    for pair in combinations(dd_qubits, 2):
+        if pair in edges:
+            # TODO/WARNING: Need a system to select qd contextually!
+            qd1, qd2 = pair
+            if np.any([qd1 - p1 == 1 or qd2 - p2 == 1 for p1, p2 in played_pairs]):
+                qd = qd2
+            else:
+                qd = qd1
+            # if verbose:
+            #     print(f"Selcting {qd} for {played_pairs}")
+            dd_channel = get_drive_channel(qd, backend)
+            pulse.play(qubit_gates[f"X{coloring(qd)}"], dd_channel)
+            played_channels.append(dd_channel.name)
+
+    # Fill remaining channels with zero
+    fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
+
+
 def play_ecr_moment(
     moment,
     qubit_gates,
@@ -435,14 +475,29 @@ def play_ecr_moment(
     duration_2qb = cr_gates[next(iter(cr_gates))].duration
 
     # +ZX
+    played_pairs = []
     played_channels = []
     for qubit, _ in moment.items():
         q0, q1 = qubit
         control_channel = get_control_channel(q0, q1, backend)
         pulse.play(cr_gates["+"], control_channel)
         played_channels.append(control_channel.name)
+        played_pairs.append(qubit)
     fill_unplayed_phases([], duration_2qb, registers, backend)
-    fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
+    if insert_identities:
+        fill_unplayed_dd_gates(
+            played_channels,
+            played_pairs,
+            qubit_gates,
+            duration_1qb,
+            duration_2qb,
+            coloring,
+            registers,
+            backend,
+            verbose=True,
+        )
+    else:
+        fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
 
     # Echo
     played_qubits = []
@@ -461,14 +516,28 @@ def play_ecr_moment(
     fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
 
     # -ZX
+    played_pairs = []
     played_channels = []
     for qubit, _ in moment.items():
         q0, q1 = qubit
         control_channel = get_control_channel(q0, q1, backend)
         pulse.play(cr_gates["-"], control_channel)
         played_channels.append(control_channel.name)
+        played_pairs.append(qubit)
     fill_unplayed_phases([], duration_2qb, registers, backend)
-    fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
+    if insert_identities:
+        fill_unplayed_dd_gates(
+            played_channels,
+            played_pairs,
+            qubit_gates,
+            duration_1qb,
+            duration_2qb,
+            coloring,
+            registers,
+            backend,
+        )
+    else:
+        fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
 
 
 def qiskit_gate_dispatch(label, q0, circuit, q1=None):
