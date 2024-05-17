@@ -296,6 +296,7 @@ def build_pulse_schedule(
                     insert_identities,
                     backend,
                     dt=dt,
+                    verbose=verbose,
                 )
             else:
                 raise ValueError("Invalid moment")
@@ -407,6 +408,10 @@ def fill_unplayed_single_qubit_gates(
     return played_channels
 
 
+def has_edge_with(q, partners, edge_set):
+    return np.any([set((q, p)) in edge_set for p in partners])
+
+
 def fill_unplayed_dd_gates(
     played_channels,
     played_pairs,
@@ -418,31 +423,86 @@ def fill_unplayed_dd_gates(
     backend,
     verbose=False,
 ):
-    # Zero (up to a 1QB gate)
-    fill_unplayed_channels(
-        played_channels, duration_2qb - duration_1qb, registers, backend
-    )
+    """
+    To be run within a pulse.build block. Play dynamical decoupling (DD) sequences
+    on idle pairs of qubits. The DD sequence is centered in the middle of the 2QB
+    gate. In this way, the DD sequence evenly accumulates and deaccumulates coherent
+    errors from the crosstalk.
 
-    # Play X gates on any empty pairs
-    pointer_qubits = [q for _, q in played_pairs]
-    dd_qubits = [q for q in registers if q not in flatten_tuples(played_pairs)]
-    edges = backend_edges(backend)
-    for pair in combinations(dd_qubits, 2):
-        if pair in edges:
-            # TODO/WARNING: Need a system to select qd contextually!
-            qd1, qd2 = pair
-            if np.any([qd1 - p1 == 1 or qd2 - p2 == 1 for p1, p2 in played_pairs]):
-                qd = qd2
+    The ECR echo will not affect the DD sequence, but the target rotary can; therefore,
+    we do not play a DD sequence on a target spectator.
+
+    TODO:
+    This is not an optimal DD approach. For example, consider:
+    >    Idle = [0, 1, 2], Played = [(4, 3)]
+    >    If we resolve the (0,1) pair first: Selecting [0] or [1] for
+    >    DD sequences is valid, but only [1] will work; after [0], the
+    >    pair (1,2) are both next to an active neighbor.
+
+    Arguments:
+        played_channels -- the channels that were used in the moment
+        played_pairs -- the qubit pairs that were used in the moment
+        qubit_gates -- the qubit pulse shapes
+        duration_1qb -- the duration of the single qubit gates
+        duration_2qb -- the duration of the two qubit gates
+        coloring -- the coloring rule for the qubits
+        registers -- the qubits used by the simulation
+        backend -- the Qiskit backend (for control channels)
+
+    Keyword Arguments:
+        verbose -- whether to print information about the selected qubits (default: {False})
+    """
+    if duration_2qb - duration_1qb <= 0:
+        raise ValueError("DD Error: 2QB duration must be greater than 1QB duration.")
+
+    # Get idle qubits
+    idles = [q for q in registers if q not in flatten_tuples(played_pairs)]
+
+    # Center the DD sequence
+    duration_idle1 = int((duration_2qb - duration_1qb) / 2)
+    duration_idle2 = duration_2qb - duration_1qb - duration_idle1
+    fill_unplayed_channels(played_channels, duration_idle1, registers, backend)
+
+    # Play DD sequence on empty pairs of qubits
+    dd_qubits = []
+    dd_channels = []
+    target_qubits = [q2 for _, q2 in played_pairs]
+    edges = [set(e) for e in backend_edges(backend)]
+    for pair in combinations(idles, 2):
+        if set(pair) in edges:
+            q1, q2 = pair
+            if q2 in dd_qubits or q1 in dd_qubits:
+                # DD not needed if a DD sequence already exists.
+                continue
             else:
-                qd = qd1
-            # if verbose:
-            #     print(f"Selcting {qd} for {played_pairs}")
-            dd_channel = get_drive_channel(qd, backend)
-            pulse.play(qubit_gates[f"X{coloring(qd)}"], dd_channel)
-            played_channels.append(dd_channel.name)
+                # Do not play a DD sequence on a target spectator or next to existing DD.
+                active_neighbors = target_qubits + dd_qubits
+                if not has_edge_with(q2, active_neighbors, edges):
+                    qd = q2
+                elif not has_edge_with(q1, active_neighbors, edges):
+                    qd = q1
+                else:
+                    raise ValueError(
+                        f"DD Error: Idle pair ({q1, q2}) are next to active neighbors (target or DD)."
+                    )
 
-    # Fill remaining channels with zero
-    fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
+                dd_channel = get_drive_channel(qd, backend)
+                pulse.play(qubit_gates[f"X{coloring(qd)}"], dd_channel)
+                dd_channels.append(dd_channel.name)
+                dd_qubits.append(qd)
+
+    # Print selected qubits
+    if verbose and len(dd_qubits) > 0:
+        print(f"\tSelcting {dd_qubits} for DD sequences when playing {played_pairs}.")
+
+    # Fill remaining time with idle
+    fill_unplayed_channels(played_channels, duration_idle2, registers, backend)
+    fill_unplayed_channels(
+        played_channels + dd_channels,
+        duration_1qb,
+        registers,
+        backend,
+    )
 
 
 def play_ecr_moment(
@@ -454,6 +514,7 @@ def play_ecr_moment(
     insert_identities,
     backend,
     dt=1.0,
+    verbose=False,
 ):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
@@ -494,7 +555,7 @@ def play_ecr_moment(
             coloring,
             registers,
             backend,
-            verbose=True,
+            verbose=verbose,
         )
     else:
         fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
@@ -535,6 +596,7 @@ def play_ecr_moment(
             coloring,
             registers,
             backend,
+            verbose=False,
         )
     else:
         fill_unplayed_channels(played_channels, duration_2qb, registers, backend)
