@@ -3,6 +3,7 @@ import numpy as np
 from qiskit import pulse
 from scipy.integrate import simpson
 import sympy
+import warnings
 
 # TODO: Flat top gaussian envelope
 # TODO: Refactor angle to area (because qiskit uses kw angle for phase)
@@ -20,7 +21,7 @@ def get_samples(obj):
         raise TypeError("Object is not a pulse waveform or symbolic pulse.")
 
 
-def get_amplitude_for_rotation(theta, signal, dt):
+def get_amplitude_for_rotation(theta, signal, dt, minimum_area=1e-2):
     """Get the amplitude of a pulse to achieve a rotation.
 
     Arguments:
@@ -36,7 +37,13 @@ def get_amplitude_for_rotation(theta, signal, dt):
     elif len(signal) == 1:
         return theta
     else:
-        return theta / simpson(signal, dx=dt)
+        area = simpson(signal, dx=dt)
+        if np.abs(area) < minimum_area:
+            raise ValueError(
+                "Cannot rescale amplitude for rotation with signal area |{area}| < {minimum_area}."
+            )
+        else:
+            return theta / area
 
 
 def set_limit_amplitude(signal, limit_amplitude):
@@ -227,6 +234,7 @@ def scalable_symbolic_pulse(
     degree=3,
     name=None,
     limit_amplitude=False,
+    minimum_amplitude=1e-6,
 ) -> pulse.ScalableSymbolicPulse:
     """
     Use spline interpolation to create a symbolic pulse from the provided signal.
@@ -262,6 +270,9 @@ def scalable_symbolic_pulse(
         signal, (np.ndarray, pulse.Waveform, pulse.SymbolicPulse)
     ), "Invalid signal type."
     samples = get_samples(signal)
+
+    if np.all(np.abs(samples) < minimum_amplitude):
+        raise ValueError("Zero signal detected when building spline.")
 
     if duration != len(samples):
         # Timesteps are *not* in terms of the sampling period dt.

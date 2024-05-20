@@ -1,4 +1,17 @@
+import numpy as np
 from qiskit import pulse
+from typing import Union
+
+from .qiskit_shapes import (
+    gaussian_envelope,
+    get_amplitude_for_rotation,
+    get_samples,
+    resample,
+    scalable_symbolic_pulse,
+    zero_envelope,
+)
+
+GATE_DICT = Union[dict[int, str], dict[tuple[int, int], str]]
 
 
 def get_closest_multiple_of(value, base_number):
@@ -16,3 +29,77 @@ def qiskit_closest_multiple_of_16(gate_time_si_units, backend):
             pulse.seconds_to_samples(gate_time_si_units)
         )
     return samples
+
+
+def calibrate_gateset(
+    gateset: GATE_DICT,
+    angles: list[float],
+    duration: int,
+    dt: float,
+    samples: Union[int, None] = None,
+    names: Union[list[str], None] = None,
+    verbose: bool = True,
+) -> dict:
+    """Calibrate a gateset of pulses."""
+    assert len(angles) == len(gateset), "Number of angles must match number of gates."
+
+    if names is None:
+        names = [f"{k}" for k in gateset.keys()]
+    else:
+        assert len(names) == len(gateset), "Number of names must match number of gates."
+
+    if verbose:
+        print("Storing symbolic pulses...")
+
+    # Note: If too long, lower samples
+    # Create symbolic pulses
+    stored_envs = {}
+    for k, v in gateset.items():
+        env = resample(len(v) if samples is None else samples, v, keep_step=False)
+        stored_envs[k] = scalable_symbolic_pulse(duration, env, f"memoize-{k}")
+
+    calibrated_gateset = {}
+    for i, (k, v) in enumerate(gateset.items()):
+        # Get calibrated amplitude
+        try:
+            amp = get_amplitude_for_rotation(angles[i], get_samples(v).real, dt)
+            message = f"Adjusting {names[i]} by amplitude{amp: 0.2f} for angle{angles[i]/np.pi: 0.2f}π"
+        except ValueError:
+            # Catch failed amplitude calculation
+            amp = angles[i]
+            message = f"Zero area signal. Adjusting {names[i]} by amplitude{amp: 0.2f} using angle."
+
+        if verbose:
+            print(message)
+
+        # Apply to gate
+        calibrated_gateset[k] = pulse.ScalableSymbolicPulse(
+            pulse_type=names[i],
+            duration=duration,
+            amp=amp,
+            angle=0.0,
+            limit_amplitude=False,
+            envelope=stored_envs[k].envelope,
+        )
+
+    return calibrated_gateset
+
+
+def default_single_qubit_gateset(
+    keys: list[str],
+    duration: int,
+    dt: float,
+    sx_angle: float = np.pi / 4,
+    x_angle: float = np.pi / 2,
+):
+    gates = {}
+    for k in keys:
+        if "SX" in k:
+            gates[k] = gaussian_envelope(duration, dt=dt, angle=sx_angle)
+        elif "X" in k:
+            gates[k] = gaussian_envelope(duration, dt=dt, angle=x_angle)
+        elif "I" in k:
+            gates[k] = zero_envelope(duration)
+        else:
+            raise ValueError(f"Unknown gate {k}")
+    return gates
