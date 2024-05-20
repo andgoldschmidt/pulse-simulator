@@ -128,7 +128,7 @@ def gaussian_envelope(duration, dt=1.0, angle=np.pi, sigma=None, limit_amplitude
     amplitude = get_amplitude_for_rotation(angle, signal, dt)
 
     # Adjust the amplitude to achieve the angle
-    w = pulse.Waveform(signal * amplitude, limit_amplitude=limit_amplitude)
+    w = pulse.Waveform(amplitude * signal, limit_amplitude=limit_amplitude)
     return set_limit_amplitude(w, limit_amplitude)
 
 
@@ -151,13 +151,8 @@ def constant_envelope(duration, dt=1.0, angle=np.pi, name=None, limit_amplitude=
 
     # Adjust the amplitude to achieve the angle
     s = pulse.Constant(duration, amplitude, name=name, limit_amplitude=limit_amplitude)
-    try:
-        return s.get_waveform()
-    except pulse.PulseError:
-        # Older versions of Qiskit do not pass limit_amplitude correctly.
-        return pulse.Waveform(
-            amplitude * np.ones(duration), name=name, limit_amplitude=limit_amplitude
-        )
+    s = set_limit_amplitude(s, limit_amplitude)
+    return get_waveform(s)
 
 
 def zero_envelope(duration):
@@ -329,7 +324,7 @@ def scalable_symbolic_pulse(
         # fit a spline to the data (extrapolate with zeros)
         env = fit_spline_envelope(ts, ys, degree)
 
-    return pulse.ScalableSymbolicPulse(
+    s = pulse.ScalableSymbolicPulse(
         pulse_type=pulse_type,
         duration=duration,
         amp=amp,
@@ -341,3 +336,4 @@ def scalable_symbolic_pulse(
         constraints=None,
         valid_amp_conditions=None,
     )
+    return set_limit_amplitude(s, limit_amplitude)
