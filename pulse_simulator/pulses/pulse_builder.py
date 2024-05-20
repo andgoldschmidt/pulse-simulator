@@ -173,7 +173,7 @@ def get_moment_case(moment):
         return case
 
 
-def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
+def durations_of_moments(list_of_moments, duration_1qb, duration_2qb):
     """Get the list of durations corresponding to a list of moments.
 
     Can be combined with accumulate to get the timestep after each moment.
@@ -187,8 +187,6 @@ def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
         The list of durations of the moments
     """
     durations = []
-    duration_1qb = qubit_gates[next(iter(qubit_gates))].duration
-    duration_2qb = cr_gates[next(iter(cr_gates))].duration
     types_and_durations = {
         "single": duration_1qb,
         "ecr": 2 * duration_2qb + duration_1qb,

@@ -8,6 +8,7 @@ from .qiskit_shapes import (
     get_samples,
     resample,
     scalable_symbolic_pulse,
+    set_limit_amplitude,
     zero_envelope,
 )
 
@@ -49,15 +50,24 @@ def calibrate_gateset(
     # Create symbolic pulses
     stored_envs = []
     for i, v in enumerate(gateset):
-        env = resample(len(v) if samples is None else samples, v, keep_step=False)
-        stored_envs.append(scalable_symbolic_pulse(duration, env, f"memoize-{i}"))
+        env = resample(
+            len(v) if samples is None else samples,
+            v,
+            keep_step=False,
+        )
+        stored_envs.append(
+            scalable_symbolic_pulse(
+                duration, env, f"memoize-{i}", limit_amplitude=False
+            )
+        )
 
     calibrated_gateset = {}
     for i, v in enumerate(gateset):
         # Get calibrated amplitude
         try:
             # NOTE: Real-valued signals only
-            amp = get_amplitude_for_rotation(angles[i], get_samples(v).real, dt)
+            samples = get_samples(stored_envs[i]).real
+            amp = get_amplitude_for_rotation(angles[i], samples, dt)
             message = f"Adjusting {names[i]} by amplitude{amp: 0.2f} for angle{angles[i]/np.pi: 0.2f}π"
         except ValueError:
             # Catch failed amplitude calculation

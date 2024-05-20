@@ -8,13 +8,50 @@ import warnings
 # TODO: Flat top gaussian envelope
 # TODO: Refactor angle to area (because qiskit uses kw angle for phase)
 # TODO: Bug in SymbolicPulse.get_waveform(): Limit amplitude not passed.
+from qiskit.pulse.library.symbolic_pulses import _get_expression_args
+
+
+def get_waveform(obj) -> pulse.Waveform:
+    r"""Return a Waveform with samples filled according to the formula that the pulse
+    represents and the parameter values it contains.
+
+    Since the returned array is a discretized time series of the continuous function,
+    this method uses a midpoint sampler. For ``duration``, return:
+
+    .. math::
+
+        \{f(t+0.5) \in \mathbb{C} | t \in \mathbb{Z} \wedge  0<=t<\texttt{duration}\}
+
+    Returns:
+        A waveform representation of this pulse.
+
+    Raises:
+        PulseError: When parameters are not assigned.
+        PulseError: When expression for pulse envelope is not assigned.
+    """
+    if obj.is_parameterized():
+        raise pulse.PulseError(
+            "Unassigned parameter exists. All parameters must be assigned."
+        )
+
+    if obj._envelope is None:
+        raise pulse.PulseError("Pulse envelope expression is not assigned.")
+
+    fargs = _get_expression_args(obj._envelope, obj.parameters)
+    return pulse.Waveform(
+        samples=obj._envelope_lam(*fargs),
+        name=obj.name,
+        limit_amplitude=obj.limit_amplitude,
+    )
 
 
 def get_samples(obj):
     if isinstance(obj, pulse.Waveform):
+        set_limit_amplitude(obj, False)
         return obj.samples
     elif isinstance(obj, pulse.SymbolicPulse):
-        return obj.get_waveform().samples
+        set_limit_amplitude(obj, False)
+        return get_waveform(obj).samples
     elif isinstance(obj, np.ndarray):
         return obj
     else:
