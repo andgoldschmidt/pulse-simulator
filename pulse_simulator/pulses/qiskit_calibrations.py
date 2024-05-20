@@ -11,8 +11,6 @@ from .qiskit_shapes import (
     zero_envelope,
 )
 
-GATE_DICT = Union[dict[int, str], dict[tuple[int, int], str]]
-
 
 def get_closest_multiple_of(value, base_number):
     return int(value + base_number / 2) - (int(value + base_number / 2) % base_number)
@@ -32,54 +30,51 @@ def qiskit_closest_multiple_of_16(gate_time_si_units, backend):
 
 
 def calibrate_gateset(
-    gateset: GATE_DICT,
+    gateset: list[np.ndarray],
+    names: list[str],
     angles: list[float],
     duration: int,
     dt: float,
     samples: Union[int, None] = None,
-    names: Union[list[str], None] = None,
     verbose: bool = True,
 ) -> dict:
     """Calibrate a gateset of pulses."""
     assert len(angles) == len(gateset), "Number of angles must match number of gates."
-
-    if names is None:
-        names = [f"{k}" for k in gateset.keys()]
-    else:
-        assert len(names) == len(gateset), "Number of names must match number of gates."
+    assert len(names) == len(gateset), "Number of names must match number of gates."
 
     if verbose:
         print("Storing symbolic pulses...")
 
     # Note: If too long, lower samples
     # Create symbolic pulses
-    stored_envs = {}
-    for k, v in gateset.items():
+    stored_envs = []
+    for i, v in enumerate(gateset):
         env = resample(len(v) if samples is None else samples, v, keep_step=False)
-        stored_envs[k] = scalable_symbolic_pulse(duration, env, f"memoize-{k}")
+        stored_envs.append(scalable_symbolic_pulse(duration, env, f"memoize-{i}"))
 
     calibrated_gateset = {}
-    for i, (k, v) in enumerate(gateset.items()):
+    for i, v in enumerate(gateset):
         # Get calibrated amplitude
         try:
+            # NOTE: Real-valued signals only
             amp = get_amplitude_for_rotation(angles[i], get_samples(v).real, dt)
             message = f"Adjusting {names[i]} by amplitude{amp: 0.2f} for angle{angles[i]/np.pi: 0.2f}π"
         except ValueError:
             # Catch failed amplitude calculation
             amp = angles[i]
-            message = f"Zero area signal. Adjusting {names[i]} by amplitude{amp: 0.2f} using angle."
+            message = f"Zero area signal. Adjusting {names[i]} by amplitude{amp: 0.2f} (using provided angle)."
 
         if verbose:
             print(message)
 
         # Apply to gate
-        calibrated_gateset[k] = pulse.ScalableSymbolicPulse(
+        calibrated_gateset[names[i]] = pulse.ScalableSymbolicPulse(
             pulse_type=names[i],
             duration=duration,
             amp=amp,
             angle=0.0,
             limit_amplitude=False,
-            envelope=stored_envs[k].envelope,
+            envelope=stored_envs[i].envelope,
         )
 
     return calibrated_gateset
