@@ -8,7 +8,6 @@ from .qiskit_shapes import (
     get_samples,
     resample,
     scalable_symbolic_pulse,
-    set_limit_amplitude,
     zero_envelope,
 )
 
