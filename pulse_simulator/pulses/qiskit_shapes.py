@@ -3,24 +3,62 @@ import numpy as np
 from qiskit import pulse
 from scipy.integrate import simpson
 import sympy
+import warnings
 
 # TODO: Flat top gaussian envelope
 # TODO: Refactor angle to area (because qiskit uses kw angle for phase)
 # TODO: Bug in SymbolicPulse.get_waveform(): Limit amplitude not passed.
+from qiskit.pulse.library.symbolic_pulses import _get_expression_args
+
+
+def get_waveform(obj) -> pulse.Waveform:
+    r"""Return a Waveform with samples filled according to the formula that the pulse
+    represents and the parameter values it contains.
+
+    Since the returned array is a discretized time series of the continuous function,
+    this method uses a midpoint sampler. For ``duration``, return:
+
+    .. math::
+
+        \{f(t+0.5) \in \mathbb{C} | t \in \mathbb{Z} \wedge  0<=t<\texttt{duration}\}
+
+    Returns:
+        A waveform representation of this pulse.
+
+    Raises:
+        PulseError: When parameters are not assigned.
+        PulseError: When expression for pulse envelope is not assigned.
+    """
+    if obj.is_parameterized():
+        raise pulse.PulseError(
+            "Unassigned parameter exists. All parameters must be assigned."
+        )
+
+    if obj._envelope is None:
+        raise pulse.PulseError("Pulse envelope expression is not assigned.")
+
+    fargs = _get_expression_args(obj._envelope, obj.parameters)
+    return pulse.Waveform(
+        samples=obj._envelope_lam(*fargs),
+        name=obj.name,
+        limit_amplitude=obj.limit_amplitude,
+    )
 
 
 def get_samples(obj):
     if isinstance(obj, pulse.Waveform):
+        set_limit_amplitude(obj, False)
         return obj.samples
     elif isinstance(obj, pulse.SymbolicPulse):
-        return obj.get_waveform().samples
+        set_limit_amplitude(obj, False)
+        return get_waveform(obj).samples
     elif isinstance(obj, np.ndarray):
         return obj
     else:
         raise TypeError("Object is not a pulse waveform or symbolic pulse.")
 
 
-def get_amplitude_for_rotation(theta, signal, dt):
+def get_amplitude_for_rotation(theta, signal, dt, minimum_area=1e-2):
     """Get the amplitude of a pulse to achieve a rotation.
 
     Arguments:
@@ -36,7 +74,13 @@ def get_amplitude_for_rotation(theta, signal, dt):
     elif len(signal) == 1:
         return theta
     else:
-        return theta / simpson(signal, dx=dt)
+        area = simpson(signal, dx=dt)
+        if np.abs(area) < minimum_area:
+            raise ValueError(
+                "Cannot rescale amplitude for rotation with signal area |{area}| < {minimum_area}."
+            )
+        else:
+            return theta / area
 
 
 def set_limit_amplitude(signal, limit_amplitude):
@@ -84,7 +128,7 @@ def gaussian_envelope(duration, dt=1.0, angle=np.pi, sigma=None, limit_amplitude
     amplitude = get_amplitude_for_rotation(angle, signal, dt)
 
     # Adjust the amplitude to achieve the angle
-    w = pulse.Waveform(signal * amplitude, limit_amplitude=limit_amplitude)
+    w = pulse.Waveform(amplitude * signal, limit_amplitude=limit_amplitude)
     return set_limit_amplitude(w, limit_amplitude)
 
 
@@ -107,13 +151,8 @@ def constant_envelope(duration, dt=1.0, angle=np.pi, name=None, limit_amplitude=
 
     # Adjust the amplitude to achieve the angle
     s = pulse.Constant(duration, amplitude, name=name, limit_amplitude=limit_amplitude)
-    try:
-        return s.get_waveform()
-    except pulse.PulseError:
-        # Older versions of Qiskit do not pass limit_amplitude correctly.
-        return pulse.Waveform(
-            amplitude * np.ones(duration), name=name, limit_amplitude=limit_amplitude
-        )
+    s = set_limit_amplitude(s, limit_amplitude)
+    return get_waveform(s)
 
 
 def zero_envelope(duration):
@@ -227,6 +266,7 @@ def scalable_symbolic_pulse(
     degree=3,
     name=None,
     limit_amplitude=False,
+    minimum_amplitude=1e-6,
 ) -> pulse.ScalableSymbolicPulse:
     """
     Use spline interpolation to create a symbolic pulse from the provided signal.
@@ -263,6 +303,9 @@ def scalable_symbolic_pulse(
     ), "Invalid signal type."
     samples = get_samples(signal)
 
+    if np.all(np.abs(samples) < minimum_amplitude):
+        raise ValueError("Zero signal detected when building spline.")
+
     if duration != len(samples):
         # Timesteps are *not* in terms of the sampling period dt.
         Δt = duration / len(samples)
@@ -281,7 +324,7 @@ def scalable_symbolic_pulse(
         # fit a spline to the data (extrapolate with zeros)
         env = fit_spline_envelope(ts, ys, degree)
 
-    return pulse.ScalableSymbolicPulse(
+    s = pulse.ScalableSymbolicPulse(
         pulse_type=pulse_type,
         duration=duration,
         amp=amp,
@@ -293,3 +336,4 @@ def scalable_symbolic_pulse(
         constraints=None,
         valid_amp_conditions=None,
     )
+    return set_limit_amplitude(s, limit_amplitude)

@@ -142,4 +142,4 @@ def backend_edges(backend, directed=False):
     dir_graph = backend.configuration().coupling_map
     if not directed:
         dir_graph = np.unique([set(edge) for edge in dir_graph])
-    return [tuple(edge) for edge in dir_graph]
+    return [list(edge) for edge in dir_graph]

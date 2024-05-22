@@ -1,7 +1,9 @@
 from typing import Union
 
+# Used in the `MomentBuilder` class as types
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.circuit import Qubit
+
 from qiskit.converters import dag_to_circuit
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers
@@ -12,7 +14,7 @@ ONE_QUBIT_GATES = ["sx", "x"]
 TWO_QUBIT_GATES = ["ecr"]
 VIRTUAL_GATES = ["rz"]
 
-GATE_DICT = dict[int, str] | dict[tuple[int, int], str]
+GATE_DICT = Union[dict[int, str], dict[tuple[int, int], str]]
 VIRTUAL_ZS = dict[int, float]
 SINGLE_MOMENT = tuple[GATE_DICT, VIRTUAL_ZS]
 CIRCUIT_MOMENTS = list[tuple[GATE_DICT, VIRTUAL_ZS]]

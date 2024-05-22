@@ -15,6 +15,7 @@ from ..models.qiskit_backend_utils import (
     get_phase_channel,
 )
 
+DURATION_PHASE_GATE = 1  # Duration of the phase gate in dt units
 VALID_GATE_TYPES = ("X", "SX", "I", "ECR")
 VALID_MOMENT_TYPES = ("single", "ecr", "phase")
 
@@ -173,7 +174,7 @@ def get_moment_case(moment):
         return case
 
 
-def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
+def durations_of_moments(list_of_moments, duration_1qb, duration_2qb):
     """Get the list of durations corresponding to a list of moments.
 
     Can be combined with accumulate to get the timestep after each moment.
@@ -187,12 +188,10 @@ def durations_of_moments(list_of_moments, qubit_gates, cr_gates):
         The list of durations of the moments
     """
     durations = []
-    duration_1qb = qubit_gates[next(iter(qubit_gates))].duration
-    duration_2qb = cr_gates[next(iter(cr_gates))].duration
     types_and_durations = {
         "single": duration_1qb,
         "ecr": 2 * duration_2qb + duration_1qb,
-        "phase": 1,
+        "phase": DURATION_PHASE_GATE,
     }
     for moment in list_of_moments:
         case = get_moment_case(moment)
@@ -288,13 +287,13 @@ def build_pulse_schedule(
                 play_phase_moment(moment, dt, registers, backend)
             elif case == "ecr":
                 play_ecr_moment(
-                    moment,
-                    qubit_gates,
-                    cr_gates,
-                    registers,
-                    coloring,
-                    insert_identities,
-                    backend,
+                    moment=moment,
+                    qubit_gates=qubit_gates,
+                    cr_gates=cr_gates,
+                    registers=registers,
+                    coloring=coloring,
+                    insert_identities=insert_identities,
+                    backend=backend,
                     dt=dt,
                     verbose=verbose,
                 )
@@ -340,13 +339,19 @@ def play_phase_moment(moment, dt, registers, backend):
         phase_channel = get_phase_channel(qubit, backend)
         # R_Z gates are played with 1/2 the value
         pulse.play(
-            constant_envelope(1, angle=angle / 2 / dt, name="phase"), phase_channel
+            constant_envelope(
+                DURATION_PHASE_GATE,
+                angle=angle / 2 / dt,
+                name="phase",
+                # dt=dt,
+            ),
+            phase_channel,
         )
         played_qubits.append(qubit)
 
-    fill_unplayed_phases(played_qubits, 1, registers, backend)
+    fill_unplayed_phases(played_qubits, DURATION_PHASE_GATE, registers, backend)
     # No standard channels are used in phase moments
-    fill_unplayed_channels([], 1, registers, backend)
+    fill_unplayed_channels([], DURATION_PHASE_GATE, registers, backend)
 
 
 def fill_unplayed_channels(played_channel_names, duration, registers, backend):
@@ -368,6 +373,9 @@ def fill_unplayed_channels(played_channel_names, duration, registers, backend):
 def fill_unplayed_phases(played_qubits, duration, registers, backend):
     """To be run within a pulse.build block. Play zero envelopes on the phase
     channels that were not used in the moment.
+
+    Phase channels are not a part of the standard backend channels and must be
+    handled separately.
 
     Arguments:
         played_qubits -- the qubits that were used in the moment
@@ -563,6 +571,7 @@ def play_ecr_moment(
     # Echo
     played_qubits = []
     played_channels = []
+
     for qubit, label in moment.items():
         q0, _ = qubit
         drive_channel = get_drive_channel(q0, backend)
