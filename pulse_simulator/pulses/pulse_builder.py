@@ -15,7 +15,7 @@ from ..models.qiskit_backend_utils import (
     get_phase_channel,
 )
 
-DURATION_PHASE_GATE = 11  # Duration of the phase gate in dt units
+DURATION_PHASE_GATE = 1  # Duration of the phase gate in dt units
 VALID_GATE_TYPES = ("X", "SX", "I", "ECR")
 VALID_MOMENT_TYPES = ("single", "ecr", "phase")
 
@@ -287,13 +287,13 @@ def build_pulse_schedule(
                 play_phase_moment(moment, dt, registers, backend)
             elif case == "ecr":
                 play_ecr_moment(
-                    moment,
-                    qubit_gates,
-                    cr_gates,
-                    registers,
-                    coloring,
-                    insert_identities,
-                    backend,
+                    moment=moment,
+                    qubit_gates=qubit_gates,
+                    cr_gates=cr_gates,
+                    registers=registers,
+                    coloring=coloring,
+                    insert_identities=insert_identities,
+                    backend=backend,
                     dt=dt,
                     verbose=verbose,
                 )
@@ -343,7 +343,7 @@ def play_phase_moment(moment, dt, registers, backend):
                 DURATION_PHASE_GATE,
                 angle=angle / 2 / dt,
                 name="phase",
-                dt=dt,
+                # dt=dt,
             ),
             phase_channel,
         )
@@ -571,6 +571,7 @@ def play_ecr_moment(
     # Echo
     played_qubits = []
     played_channels = []
+
     for qubit, label in moment.items():
         q0, _ = qubit
         drive_channel = get_drive_channel(q0, backend)

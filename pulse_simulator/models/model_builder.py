@@ -65,6 +65,13 @@ def build_model(
             backend, rabi=simulation_rabi, units=simulation_units
         )
 
+    if verbose:
+        print(f"Building {backend.name()} model...")
+        print(f"\tTimestep: {simulation_dt: 0.2f}")
+        print(f"\tRabi: {simulation_rabi}")
+        print(f"\tCrosstalk: {include_crosstalk}")
+        print(f"\tDissipation: {include_dissipation}")
+
     # Partially compile model functions with parameters
     # =====
     H_rx = functools.partial(
@@ -94,8 +101,6 @@ def build_model(
     )
 
     edges = backend_edges(backend)
-    if verbose:
-        print(f"Edges: {edges}")
 
     # Create a system model
     # =====
@@ -116,13 +121,18 @@ def build_model(
         As_static += Ajs_static
 
     # Two qubit terms
+    added_edges = []
     for control, target in edges:
         # Get both directions
-        for pair in [(control, target), (target, control)]:
-            Hj_drift, Hjs_control, Hjs_channel = H_cr(pair)
-            H_drift += Hj_drift
-            Hs_control += Hjs_control
-            Hs_channels += Hjs_channel
+        if control in registers and target in registers:
+            added_edges.append((control, target))
+            for pair in [(control, target), (target, control)]:
+                Hj_drift, Hjs_control, Hjs_channel = H_cr(pair)
+                H_drift += Hj_drift
+                Hs_control += Hjs_control
+                Hs_channels += Hjs_channel
+    if verbose:
+        print(f"\tEdges: {added_edges}")
 
     # Crosstalk
     H_xtalk = crosstalk_model(registers, edges, simulation_vars)
