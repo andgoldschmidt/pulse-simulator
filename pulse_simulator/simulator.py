@@ -3,6 +3,7 @@ import qiskit
 import qiskit_dynamics
 import pulse_simulator as ps
 import matplotlib.pyplot as plt
+import threading
 
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.quantum_info import Operator, DensityMatrix
@@ -94,22 +95,35 @@ class Simulator:
         # get moments dicts from scheduler
         moments = self._get_moments(circuit=circuit, separate_moments=separate_moments)
 
-        # simulate each moment
+        # prepare objects for simulation
         num_qubits = circuit.num_qubits
-        out = Operator(QuantumCircuit(num_qubits))
-        for moment in moments:
+        num_moments = len(moments)
+        threads = [None] * num_moments
+        results = [None] * num_moments
+        
+        # create threads for each moment
+        for i, moment in enumerate(moments):
             gates = moment[0]
             virtual_zs = moment[1]
             n_qubits = moment[2]
             if n_qubits == 1:
-                op = self._simulate_one_qubit_moment(
-                    gates, virtual_zs, num_qubits, draw, superop
+                threads[i] = threading.Thread(
+                    target=self._simulate_one_qubit_moment, 
+                    args=(gates, virtual_zs, num_qubits, draw, superop, results)
                 )
+                threads[i].start()
             if n_qubits == 2:
-                op = self._simulate_two_qubit_moment(
-                    gates, virtual_zs, num_qubits, draw, superop
+                threads[i] = threading.Thread(
+                    target=self._simulate_two_qubit_moment, 
+                    args=(gates, virtual_zs, num_qubits, draw, superop, results)
                 )
-            out = op @ out
+                threads[i].start()
+
+        # wait for threads to finish and multiply results
+        out = Operator(QuantumCircuit(num_qubits))
+        for i in range(num_moments):
+            threads[i].join()
+            out = results[i] @ out
 
         return out
 
@@ -120,6 +134,7 @@ class Simulator:
         num_qubits: int,
         draw: bool = False,
         superop: bool = False,
+        results: list = None
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -156,6 +171,8 @@ class Simulator:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
 
+        if results is not None:
+            results.append(op @ rzs)
         return op @ rzs
 
     def _simulate_two_qubit_moment(
@@ -165,6 +182,7 @@ class Simulator:
         num_qubits: int,
         draw: bool = False,
         superop: bool = False,
+        results: list = None,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -222,6 +240,8 @@ class Simulator:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
 
+        if results is not None:
+            results.append(op @ rzs)
         return op @ rzs
 
     def _get_moments(
