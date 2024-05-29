@@ -109,21 +109,20 @@ class Simulator:
             if n_qubits == 1:
                 threads[i] = threading.Thread(
                     target=self._simulate_one_qubit_moment, 
-                    args=(gates, virtual_zs, num_qubits, draw, superop, results)
+                    args=(gates, virtual_zs, num_qubits, draw, superop, results, i)
                 )
                 threads[i].start()
             if n_qubits == 2:
                 threads[i] = threading.Thread(
                     target=self._simulate_two_qubit_moment, 
-                    args=(gates, virtual_zs, num_qubits, draw, superop, results)
+                    args=(gates, virtual_zs, num_qubits, draw, superop, results, i)
                 )
                 threads[i].start()
-
         # wait for threads to finish and multiply results
         out = Operator(QuantumCircuit(num_qubits))
         for i in range(num_moments):
             threads[i].join()
-            out = results[i] @ out
+            out = results[i] @ out        
 
         return out
 
@@ -134,7 +133,8 @@ class Simulator:
         num_qubits: int,
         draw: bool = False,
         superop: bool = False,
-        results: list = None
+        results: list = None,
+        index: int = None,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -172,7 +172,7 @@ class Simulator:
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
 
         if results is not None:
-            results.append(op @ rzs)
+            results[index] = op @ rzs
         return op @ rzs
 
     def _simulate_two_qubit_moment(
@@ -183,6 +183,7 @@ class Simulator:
         draw: bool = False,
         superop: bool = False,
         results: list = None,
+        index: int = None,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -241,7 +242,7 @@ class Simulator:
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
 
         if results is not None:
-            results.append(op @ rzs)
+            results[index] = op @ rzs
         return op @ rzs
 
     def _get_moments(
