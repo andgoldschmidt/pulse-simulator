@@ -99,47 +99,69 @@ class Simulator:
         # get unique moments
         unique_moments = []
         moment_keys = []
+        moments_to_unique_moments = []
 
         for i, moment in enumerate(moments):
             key = (frozenset(moment[0].items()), frozenset(moment[1].items()), moment[2])
-            if key not in moment_keys:
+            if key in moment_keys:
+                index = moment_keys.index(key)
+                moments_to_unique_moments.append(index)
+            else:
                 unique_moments.append(moment)
-            moment_keys.append(key)
+                moment_keys.append(key)
+                moments_to_unique_moments.append(len(unique_moments) - 1)
+
+        print("UNIQUE MOMENTS")
+        for m in unique_moments:
+            print(m)
+        print("DONE W UNIQUE MOMENTS")
+
+        print("MOMENTS OT UNIQUE MOMENTS")
+        print(moments_to_unique_moments)
+        print("DONE W MOMENTS OT UNIQUE MOMENTS")
         
         # prepare objects for simulation
         num_qubits = circuit.num_qubits
         num_unique_moments = len(unique_moments)
         threads = [None] * num_unique_moments
         results = [None] * num_unique_moments
-        unitaries_dict = {}
 
         # create threads for each unique moment
         for i, moment in enumerate(unique_moments):
-            key = (frozenset(moment[0].items()), frozenset(moment[1].items()), moment[2])
+            print(i, moment)
             gates = moment[0]
             virtual_zs = moment[1]
-            n_qubits = moment[2]
-            if n_qubits == 1:
+            moment_n_qubits = moment[2]
+            if moment_n_qubits == 1:
                 threads[i] = threading.Thread(
                     target=self._simulate_one_qubit_moment, 
                     args=(gates, virtual_zs, num_qubits, draw, superop, results, i)
                 )
-                threads[i].start()
-            if n_qubits == 2:
+                # threads[i].start()
+                # results[i] = self._simulate_one_qubit_moment(gates, virtual_zs, num_qubits, draw, superop)
+            elif moment_n_qubits == 2:
                 threads[i] = threading.Thread(
                     target=self._simulate_two_qubit_moment, 
                     args=(gates, virtual_zs, num_qubits, draw, superop, results, i)
                 )
-                threads[i].start()
-            unitaries_dict[key] = i
+                # threads[i].start()
+                # results[i] = self._simulate_two_qubit_moment(gates, virtual_zs, num_qubits, draw, superop)
+
+        # start threads
+        for thread in threads:
+            thread.start()
 
         # wait for threads to finish and multiply results
+        for thread in threads:
+            thread.join()
+        
+        # use moments_to_unique_moments to multiply results in the correct order
         out = Operator(QuantumCircuit(num_qubits))
-        for i in range(num_unique_moments):
-            threads[i].join()
-        for key in moment_keys:
-            print(unitaries_dict[key])
-            out = results[unitaries_dict[key]] @ out        
+        print("OUTPUT UNITARIES")
+
+        for index in moments_to_unique_moments:
+            print(np.round(results[index].data, 3))
+            out = results[index] @ out        
 
         return out
 
@@ -188,7 +210,7 @@ class Simulator:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
 
-        if results is not None:
+        if results is not None and index is not None:
             results[index] = op @ rzs
         return op @ rzs
 
@@ -258,7 +280,7 @@ class Simulator:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
 
-        if results is not None:
+        if results is not None and index is not None:
             results[index] = op @ rzs
         return op @ rzs
 
