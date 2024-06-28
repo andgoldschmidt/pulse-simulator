@@ -16,7 +16,7 @@ from ..models.qiskit_backend_utils import (
 )
 
 DURATION_PHASE_GATE = 1  # Duration of the phase gate in dt units
-VALID_GATE_TYPES = ("X", "SX", "I", "ECR")
+VALID_GATE_TYPES = ("X", "SX", "ID", "ECR")
 VALID_MOMENT_TYPES = ("single", "ecr", "phase")
 
 
@@ -635,7 +635,7 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
         return circuit.x(q0)
     elif label == "SX":
         return circuit.sx(q0)
-    elif label == "I":
+    elif label == "ID":
         return circuit.id(q0)
     elif label == "ECR":
         return circuit.ecr(q0, q1)
@@ -674,7 +674,7 @@ def build_circuit(
             if insert_identities:
                 for q0 in registers:
                     if q0 not in played_qubits:
-                        qiskit_gate_dispatch("I", q0, circ)
+                        qiskit_gate_dispatch("ID", q0, circ)
         elif case == "phase":
             for q0, value in moment.items():
                 circ.rz(value, q0)
