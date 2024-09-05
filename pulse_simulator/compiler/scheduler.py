@@ -26,7 +26,7 @@ class RobustScheduler:
     def __init__(
         self,
         basis_gates: list[str],
-        coupling_map: CouplingMap | None = None,
+        coupling_map: Union[CouplingMap, None] = None,
         reattach: bool = True,
         attach_final_virtual: bool = True,
     ) -> None:
@@ -39,8 +39,8 @@ class RobustScheduler:
             reattach: Whether to reattach virtual gates after scheduling. If the gates
               are not reattached, their information goes to the label of adjacent
               non-virtual gates.
-            attach_final_virtual: Whether to attach any pending virtual gates at the end of
-              the circuit.
+            attach_final_virtual: Whether to attach any pending virtual gates at the end 
+              of the circuit.
         """
         pm = PassManager(
             [

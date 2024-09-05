@@ -14,6 +14,7 @@ from ..pulse_simulator_types import (
     TIMED_CIRCUIT_MOMENTS,
     ONE_QUBIT_GATE_NAMES,
     TWO_QUBIT_GATE_NAMES,
+    IDENTITY_GATE_NAME,
 )
 
 
@@ -22,6 +23,7 @@ class MomentBuilder:
     def __init__(
         self,
         basis_gates: list[str],
+        registers: list[int],
         coupling_map: Union[list[list[int]], None] = None,
     ) -> None:
         """Creates a `MomentBuilder` instance.
@@ -29,10 +31,12 @@ class MomentBuilder:
         Args:
             - basis_gates (list[str]): the basis gates to transpile to
         """
+        self._registers = registers     
+
         # set scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly
         self._scheduler = RobustScheduler(
-            basis_gates=basis_gates,
+            basis_gates,
             coupling_map=coupling_map,
             reattach=False,
             attach_final_virtual=False,
@@ -44,6 +48,7 @@ class MomentBuilder:
         separate_moments: bool = True,
         no_end_to_end: bool = True,
         optimization_level: Union[int, None] = 1,
+        insert_identities: bool = True,
         draw: bool = False,
     ) -> list[CIRCUIT_MOMENT]:
         """Builds list of dictionary moments. The default format is:
@@ -68,6 +73,8 @@ class MomentBuilder:
                 equal to the identity or for which you don't want any changes other than
                 transpilation and scheduling. Can be set to None if no transpilation is
                 desired. Defaults to 1.
+            -   insert_identities (bool): whether to insert identity gates in moments of
+                single qubit gates where no gate is applied.
             -   draw (bool): whether to draw the circuit after scheduling.
 
         Returns:
@@ -106,6 +113,11 @@ class MomentBuilder:
 
                     if virtual := gate.op.label:
                         virtual_zs.update(self._virtual_str_to_dict(virtual))
+
+                    if insert_identities:
+                        for qubit in self._registers:
+                            if qubit not in gates_dict:
+                                gates_dict[qubit] = IDENTITY_GATE_NAME.upper()
 
                 # two-qubit operation
                 elif len(qargs) == 2:

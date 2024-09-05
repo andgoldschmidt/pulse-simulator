@@ -45,9 +45,10 @@ class ExperimentalSimulator:
             for edge in backend_edges(backend):
                 if edge[0] in registers and edge[1] in registers:
                     coupling_map.append(edge)
-
+        
         self._moment_builder = MomentBuilder(
-            basis_gates=basis_gates,
+            basis_gates,
+            self._registers,
             coupling_map=coupling_map,
         )
 
@@ -75,9 +76,10 @@ class ExperimentalSimulator:
             circuit,
             separate_moments=True,
             no_end_to_end=True,
+            insert_identities=True,
             optimization_level=0,
             draw=False,
-        )
+        )            
 
         # get unique moments
         unique_moments: list[CIRCUIT_MOMENT] = []
