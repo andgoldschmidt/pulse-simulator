@@ -19,8 +19,8 @@ from .passes import (
 
 class RobustScheduler:
     """
-    A scheduler that takes in a circuit and schedules it for simulation with robust pulses, so that
-    we have moments of one- and two-qubit gates.
+    A scheduler that takes in a circuit and schedules it for simulation with robust pulses,
+    so that we have moments of one- and two-qubit gates.
     """
 
     def __init__(
@@ -36,10 +36,11 @@ class RobustScheduler:
         Arguments:
             basis_gates: The basis gates for the backend.
             coupling_map: The coupling map for the backend.
-            reattach: Whether to reattach virtual gates after scheduling. If the gates are not
-                reattached, their information goes to the label of adjacent non-virtual gates.
-            attach_final_virtual: Whether to attach any pending virtual gates at the end of the
-                circuit.
+            reattach: Whether to reattach virtual gates after scheduling. If the gates
+              are not reattached, their information goes to the label of adjacent
+              non-virtual gates.
+            attach_final_virtual: Whether to attach any pending virtual gates at the end of
+              the circuit.
         """
         pm = PassManager(
             [
@@ -126,8 +127,8 @@ class RobustScheduler:
         """
         if no_end_to_end and not separate_moments:
             raise ValueError(
-                "Cannot forbid end-to-end connections between two-qubit gates without separating "
-                "one- and two-qubit moments."
+                "Cannot forbid end-to-end connections between two-qubit gates without "
+                "separating one- and two-qubit moments."
             )
 
         # Initialize all passes
@@ -144,7 +145,8 @@ class RobustScheduler:
 
         merged_rzs = rz_pass.run(circuit_to_dag(transpiled_qc))
 
-        # Attach virtual gates and keep track of any virtual gates at the end of the circuit
+        # Attach virtual gates and keep track of any virtual gates at the end of the 
+        # circuit
         attached_dag = virtual_pass.run(merged_rzs)
         self._final_virtuals = virtual_pass.get_final_virtuals()
 
@@ -154,7 +156,8 @@ class RobustScheduler:
             separated_dag = separate_pass.run(attached_dag)
             separated_qc = dag_to_circuit(separated_dag)
 
-            # Slide gates to be executed as soon as possible until no more changes are being done
+            # Slide gates to be executed as soon as possible until no more changes are 
+            # being done
             flag = False
             last_qc = separated_qc
             while not flag:
@@ -182,7 +185,8 @@ class RobustScheduler:
         if not self._reattach:
             final_dag = circuit_to_dag(last_qc)
         else:
-            # Make virtual gates "real" again and attach any pending at the end of the circuit
+            # Make virtual gates "real" again and attach any pending at the end of the 
+            # circuit
             final_dag = expand_pass.run(circuit_to_dag(last_qc))
 
         if self._final_virtuals and self._attach_final_virtual:

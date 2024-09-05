@@ -37,3 +37,13 @@ def qiskit_identity_operator(n_qubits, open=False):
         return quantum_info.SuperOp(op)
     else:
         return op
+
+
+def operator_fidelity(
+    a: quantum_info.Operator,
+    b: quantum_info.Operator
+) -> float:
+    a2 = np.trace(a.data.conj().T @ a.data)
+    b2 = np.trace(b.data.conj().T @ b.data)
+    a_b = np.trace(a.data.conj().T @ b.data)
+    return np.abs(a_b / np.sqrt(a2 * b2))**2

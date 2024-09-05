@@ -14,33 +14,36 @@ from qiskit.transpiler.passes import RemoveBarriers
 
 from .compiler.scheduler import RobustScheduler
 
+from .pulse_simulator_types import (
+    ONE_QUBIT_GATE_NAMES,
+    TWO_QUBIT_GATE_NAMES,
+    VIRTUAL_GATE_NAMES,
+    GATE_MOMENT,
+    VIRTUAL_MOMENT,
+    CIRCUIT_MOMENT,
+)
+
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_platform_name", "cpu")
 qiskit_dynamics.array.Array.set_default_backend("jax")
-
-ONE_QUBIT_GATES = ["sx", "x"]
-TWO_QUBIT_GATES = ["ecr"]
-VIRTUAL_GATES = ["rz"]
-
-GATE_DICT = dict[int, str] | dict[tuple[int, int], str]
-VIRTUAL_ZS = dict[int, float]
-SINGLE_MOMENT = tuple[GATE_DICT, VIRTUAL_ZS]
-CIRCUIT_MOMENTS = list[tuple[GATE_DICT, VIRTUAL_ZS]]
 
 
 class Simulator:
     """A pulse simulator that uses qiskit-dynamics to simulate a given circuit."""
 
     def __init__(
-        self, basis_gates: list[str], solver: qiskit_dynamics.Solver, backend: BackendV2
+        self,
+        basis_gates: list[str], 
+        solver: qiskit_dynamics.Solver, 
+        backend: BackendV2
     ):
         required_pulses = []
         for gate in basis_gates:
-            if gate in VIRTUAL_GATES:
+            if gate in VIRTUAL_GATE_NAMES:
                 continue
-            elif gate in ONE_QUBIT_GATES:
+            elif gate in ONE_QUBIT_GATE_NAMES:
                 required_pulses += [gate + "_blue", gate + "_red"]
-            elif gate in TWO_QUBIT_GATES:
+            elif gate in TWO_QUBIT_GATE_NAMES:
                 required_pulses += [
                     "zx+_red",
                     "zx+_blue",
@@ -101,7 +104,11 @@ class Simulator:
         moments_to_unique_moments = []
 
         for moment in moments:
-            key = (frozenset(moment[0].items()), frozenset(moment[1].items()), moment[2])
+            key = (
+                frozenset(moment[0].items()),
+                frozenset(moment[1].items()),
+                moment[2],
+            )
             if key in moment_keys:
                 index = moment_keys.index(key)
                 moments_to_unique_moments.append(index)
@@ -109,7 +116,7 @@ class Simulator:
                 unique_moments.append(moment)
                 moment_keys.append(key)
                 moments_to_unique_moments.append(len(unique_moments) - 1)
-        
+
         # prepare objects for simulation
         num_qubits = circuit.num_qubits
         num_unique_moments = len(unique_moments)
@@ -120,7 +127,11 @@ class Simulator:
         # create threads for each unique moment
         with multiprocessing.Pool(num_unique_moments) as pool:
             for moment in unique_moments:
-                key = (frozenset(moment[0].items()), frozenset(moment[1].items()), moment[2])
+                key = (
+                    frozenset(moment[0].items()),
+                    frozenset(moment[1].items()),
+                    moment[2],
+                )
                 gates = moment[0]
                 virtual_zs = moment[1]
                 moment_n_qubits = moment[2]
@@ -128,13 +139,13 @@ class Simulator:
                     pool.apply_async(
                         self._simulate_one_qubit_moment,
                         args=(gates, virtual_zs, num_qubits, draw, superop, key),
-                        callback=queue.put
+                        callback=queue.put,
                     )
                 elif moment_n_qubits == 2:
                     pool.apply_async(
                         self._simulate_two_qubit_moment,
                         args=(gates, virtual_zs, num_qubits, draw, superop, key),
-                        callback=queue.put
+                        callback=queue.put,
                     )
             # wait for all tasks to complete
             pool.close()
@@ -145,22 +156,22 @@ class Simulator:
         for _ in range(num_unique_moments):
             key, unitary = queue.get()
             results[moment_keys.index(key)] = unitary
-        
+
         # use moments_to_unique_moments to multiply results in the correct order
         out = Operator(QuantumCircuit(num_qubits))
         for index in moments_to_unique_moments:
-            out = results[index] @ out        
+            out = results[index] @ out
 
         return out
 
     def _simulate_one_qubit_moment(
         self,
-        gates: GATE_DICT,
-        virtual_zs: VIRTUAL_ZS,
+        gates: GATE_MOMENT,
+        virtual_zs: VIRTUAL_MOMENT,
         num_qubits: int,
         draw: bool = False,
         superop: bool = False,
-        key = None,
+        key=None,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -203,12 +214,12 @@ class Simulator:
 
     def _simulate_two_qubit_moment(
         self,
-        gates: GATE_DICT,
-        virtual_zs: VIRTUAL_ZS,
+        gates: GATE_MOMENT,
+        virtual_zs: VIRTUAL_MOMENT,
         num_qubits: int,
         draw: bool = False,
         superop: bool = False,
-        key = None,
+        key=None,
     ) -> Operator:
         solver = self._solver
         dt = self._dt
@@ -265,14 +276,14 @@ class Simulator:
             if i not in virtual_zs:
                 virtual_zs[i] = 0.0
         rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
-        
+
         if key is not None:
             return key, op @ rzs
         return op @ rzs
 
     def _get_moments(
         self, circuit: QuantumCircuit, separate_moments: bool = True
-    ) -> CIRCUIT_MOMENTS:
+    ) -> list[CIRCUIT_MOMENT]:
         n = circuit.num_qubits
         one_q_coloring, two_q_coloring = self._get_coloring(n)
 
@@ -284,7 +295,7 @@ class Simulator:
         subdags: list[DAGCircuit] = [layer["graph"] for layer in scheduled_dag.layers()]
 
         # build moments dicts
-        moments: CIRCUIT_MOMENTS = []
+        moments: list[CIRCUIT_MOMENT] = []
         for subdag in subdags:
             gates = subdag.op_nodes(include_directives=True)
 

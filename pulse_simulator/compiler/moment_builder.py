@@ -9,33 +9,27 @@ from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers
 
 from .scheduler import RobustScheduler
-
-ONE_QUBIT_GATES = ["sx", "x"]
-TWO_QUBIT_GATES = ["ecr"]
-VIRTUAL_GATES = ["rz"]
-
-GATE_DICT = Union[dict[int, str], dict[tuple[int, int], str]]
-VIRTUAL_ZS = dict[int, float]
-SINGLE_MOMENT = tuple[GATE_DICT, VIRTUAL_ZS]
-CIRCUIT_MOMENTS = list[tuple[GATE_DICT, VIRTUAL_ZS]]
-TIMED_CIRCUIT_MOMENTS = dict[int, dict[int, str | float]]
+from ..pulse_simulator_types import (
+    CIRCUIT_MOMENT,
+    TIMED_CIRCUIT_MOMENTS,
+    ONE_QUBIT_GATE_NAMES,
+    TWO_QUBIT_GATE_NAMES,
+)
 
 
 class MomentBuilder:
+
     def __init__(
         self,
-        basis_gates: list[str] = ["rz", "sx", "x", "ecr"],
-        gate_durations: dict[int, int] = {1: 50, 2: 270},
+        basis_gates: list[str],
         coupling_map: Union[list[list[int]], None] = None,
     ) -> None:
         """Creates a `MomentBuilder` instance.
 
         Args:
             - basis_gates (list[str]): the basis gates to transpile to
-            - gate_durations (dict[int, int]): one- and two-qubit gates durations in dt
-            units. By default, this is set to 50 for one qubit gates and 270 for two qubit gates.
         """
-        # set scheduler to not attach virtual gates since we sill extract
+        # set scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly
         self._scheduler = RobustScheduler(
             basis_gates=basis_gates,
@@ -43,17 +37,15 @@ class MomentBuilder:
             reattach=False,
             attach_final_virtual=False,
         )
-        self._gate_durations = gate_durations
 
     def build_moments(
         self,
         circuit: QuantumCircuit,
         separate_moments: bool = True,
         no_end_to_end: bool = True,
-        timed: bool = False,
         optimization_level: Union[int, None] = 1,
         draw: bool = False,
-    ) -> CIRCUIT_MOMENTS | TIMED_CIRCUIT_MOMENTS:
+    ) -> list[CIRCUIT_MOMENT]:
         """Builds list of dictionary moments. The default format is:
         ```
         [
@@ -71,14 +63,6 @@ class MomentBuilder:
                 into separate moments
             -   no_end_to_end (bool): whether to forbid any adjacent two-qubit gates to
                 have end-to-end connections
-            -   timed (bool): whether to return the moments in a timed format, for
-                example:
-                ```
-                {
-                    0: {0: "SX", 50: "ECR_0", 320: "X", 370: "ECR_1"},
-                    1: {0: "SX", 50: "ECR_1", 370: "ECR_0", 640: "X"},
-                }
-                ```
             -   optimization_level (Union[int, None]): the optimization level to use in
                 Qiskit's transpiler. Useful to set to 0 when sending circuits that are
                 equal to the identity or for which you don't want any changes other than
@@ -87,10 +71,8 @@ class MomentBuilder:
             -   draw (bool): whether to draw the circuit after scheduling.
 
         Returns:
-            Moments in the format specified by the `timed` flag.
+            Moments
         """
-        n = circuit.num_qubits
-
         # scheduled circuits and get output dag
         circuit = RemoveBarriers()(circuit)
         scheduled_dag = self._scheduler.run(
@@ -105,7 +87,7 @@ class MomentBuilder:
         subdags: list[DAGCircuit] = [layer["graph"] for layer in scheduled_dag.layers()]
 
         # build moments dicts
-        moments: CIRCUIT_MOMENTS = []
+        moments: list[CIRCUIT_MOMENT] = []
         for subdag in subdags:
             gates = subdag.op_nodes(include_directives=True)
 
@@ -146,9 +128,6 @@ class MomentBuilder:
             for qubit in final_virtuals:
                 virtual_zs.update(self._virtual_str_to_dict(final_virtuals[qubit]))
             moments.append(virtual_zs)
-
-        if timed:
-            return self._convert_to_timed(moments, n)
         return moments
 
     def _virtual_str_to_dict(self, virtual: str) -> dict[int, str]:
@@ -157,13 +136,33 @@ class MomentBuilder:
         qargs = eval(processed[2])
         return {qargs._index: params[0]}
 
-    def _convert_to_timed(
-        self, moments: CIRCUIT_MOMENTS, n_qubits: int
+    def convert_to_timed(
+        self,
+        moments: list[CIRCUIT_MOMENT],
+        n_qubits: int,
+        gate_durations: dict[int, int] = {1: 50, 2: 270},
     ) -> TIMED_CIRCUIT_MOMENTS:
+        """
+        Converts the moments to a timed format. The format is:
+        ```
+        {
+            0: {0: "SX", 50: "ECR_0", 320: "X", 370: "ECR_1"},
+            1: {0: "SX", 50: "ECR_1", 370: "ECR_0", 640: "X"},
+        }
+        ```
+
+        Args:
+            - moments (list[CIRCUIT_MOMENT]): the moments to convert
+            - n_qubits (int): the number of qubits in the circuit
+            - gate_durations (dict[int, int]): 1: duration of one-qubit gates, 2: duration
+                of two-qubit gates
+
+        Returns:
+            The moments in a timed format.
+        """
         timed_moments: dict[int, dict[str]] = {i: {} for i in range(n_qubits)}
         current_time: dict[int:float] = {i: 0 for i in range(n_qubits)}
 
-        gate_durations = self._gate_durations
         for moment in moments:
             for qubit in moment:
                 gate = moment[qubit]
@@ -182,7 +181,7 @@ class MomentBuilder:
                     continue
 
                 gate_name = gate.lower()
-                if gate_name in ONE_QUBIT_GATES:
+                if gate_name in ONE_QUBIT_GATE_NAMES:
                     if (
                         qubit in timed_moments
                         and current_time[qubit] in timed_moments[qubit]
@@ -195,7 +194,7 @@ class MomentBuilder:
                     else:
                         timed_moments[qubit].update({current_time[qubit]: gate})
                     current_time[qubit] += gate_durations[1]
-                elif gate_name in TWO_QUBIT_GATES:
+                elif gate_name in TWO_QUBIT_GATE_NAMES:
                     gate_time = max([current_time[qubit[0]], current_time[qubit[1]]])
                     timed_moments[qubit[0]].update({gate_time: f"{gate}_0"})
                     timed_moments[qubit[1]].update({gate_time: f"{gate}_1"})

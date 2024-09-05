@@ -34,6 +34,7 @@ tqdm = "^4.66.1"
 
 # dev
 pytest = {version="^7.4.4", optional = true}
+flake8-pyproject = {version="^1.2.3", optional = true}
 
 [tool.poetry.extras]
 dev = ["pytest"]
@@ -42,6 +43,12 @@ dev = ["pytest"]
 [[tool.poetry.source]]
 name = "PyPI"
 priority = "primary"
+
+[tool.flake8]
+max-line-length = 90
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
 
 [build-system]
 requires = ["poetry-core>=1.7.0"]
