@@ -22,7 +22,6 @@ class MomentBuilder:
 
     def __init__(
         self,
-        basis_gates: list[str],
         registers: list[int],
         coupling_map: Union[list[list[int]], None] = None,
     ) -> None:
@@ -31,12 +30,13 @@ class MomentBuilder:
         Args:
             - basis_gates (list[str]): the basis gates to transpile to
         """
-        self._registers = registers     
+        self._registers = registers
+        self._basis_gates = ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES
 
         # set scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly
         self._scheduler = RobustScheduler(
-            basis_gates,
+            self._basis_gates,
             coupling_map=coupling_map,
             reattach=False,
             attach_final_virtual=False,
@@ -117,7 +117,7 @@ class MomentBuilder:
                     if insert_identities:
                         for qubit in self._registers:
                             if qubit not in gates_dict:
-                                gates_dict[qubit] = IDENTITY_GATE_NAME.upper()
+                                gates_dict[qubit] = IDENTITY_GATE_NAME
 
                 # two-qubit operation
                 elif len(qargs) == 2:

@@ -1,7 +1,4 @@
 # Packages
-import jax
-import qiskit_dynamics
-
 from .pulses import build_pulse_schedule, get_moment_case, build_circuit
 from .models import build_solver, backend_edges
 from .compiler import MomentBuilder
@@ -23,15 +20,9 @@ class ExperimentalSimulator:
         self,
         registers: list[int],
         backend: BackendV2,
-        basis_gates: [list[str], None] = None,
         coupling_map: Union[list[list[int]], None] = None,
         solver_kwargs: Union[dict, None] = None,
     ):
-        # Necessary for this solver to work
-        jax.config.update("jax_enable_x64", True)
-        jax.config.update("jax_platform_name", "cpu")
-        qiskit_dynamics.array.Array.set_default_backend("jax")
-
         self._registers = registers
         self._backend = backend
 
@@ -47,7 +38,6 @@ class ExperimentalSimulator:
                     coupling_map.append(edge)
         
         self._moment_builder = MomentBuilder(
-            basis_gates,
             self._registers,
             coupling_map=coupling_map,
         )

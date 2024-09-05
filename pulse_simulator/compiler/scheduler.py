@@ -52,7 +52,8 @@ class RobustScheduler:
             ]
         )
 
-        self._basis_gates = basis_gates
+        # Basis gates are case-sensitive in scheduler
+        self._basis_gates = [b.lower() for b in basis_gates]
         self._coupling_map = coupling_map
         self._reattach = reattach
         self._attach_final_virtual = attach_final_virtual

@@ -5,9 +5,8 @@ import pulse_simulator as ps
 import matplotlib.pyplot as plt
 import multiprocessing
 
-from qiskit import QuantumCircuit, QuantumRegister
+from qiskit import QuantumCircuit
 from qiskit.quantum_info import Operator, DensityMatrix
-from qiskit.circuit import Qubit
 from qiskit.providers import BackendV2
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers

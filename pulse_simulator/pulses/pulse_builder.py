@@ -414,7 +414,7 @@ def fill_unplayed_single_qubit_gates(
     for q in registers:
         if q not in played_qubits:
             drive_channel = get_drive_channel(q, backend)
-            pulse.play(qubit_gates[f"I{coloring(q)}"], drive_channel)
+            pulse.play(qubit_gates[f"{IDENTITY_GATE_NAME}{coloring(q)}"], drive_channel)
             played_channels.append(drive_channel.name)
     return played_channels
 
@@ -634,15 +634,15 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
     Returns:
         The Qiskit circuit with the gate applied
     """
-    ll = label.lower()
-    if ll not in ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES:
+    if label not in ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES:
         raise ValueError(f"Invalid gate label: {label}")
 
+    ll = label.lower()
     if ll == "x":
         return circuit.x(q0)
     elif ll == "sx":
         return circuit.sx(q0)
-    elif ll == "i":
+    elif ll == "id":
         return circuit.id(q0)
     elif ll == "ecr":
         return circuit.ecr(q0, q1)

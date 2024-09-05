@@ -2,12 +2,14 @@
 
 # Allowed gates
 # look for `TODO: Hardcoded names`
-IDENTITY_GATE_NAME = "i"
-ONE_QUBIT_GATE_NAMES = ["sx", "x"] + [IDENTITY_GATE_NAME]
-TWO_QUBIT_GATE_NAMES = ["ecr"]
-VIRTUAL_GATE_NAMES = ["rz"]
+# need to fix case sensitivity
+IDENTITY_GATE_NAME = "ID"
+ONE_QUBIT_GATE_NAMES = ["SX", "X"] + [IDENTITY_GATE_NAME]
+TWO_QUBIT_GATE_NAMES = ["ECR"]
+VIRTUAL_GATE_NAMES = ["RZ"]
 
 # Allowed moments
+# look for `TODO: Hardcoded names`
 CIRCUIT_MOMENT_NAMES = ["single", "ecr", "phase"]
 
 # Type aliases
