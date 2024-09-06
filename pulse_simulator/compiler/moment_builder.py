@@ -14,6 +14,7 @@ from ..pulse_simulator_types import (
     TIMED_CIRCUIT_MOMENTS,
     ONE_QUBIT_GATE_NAMES,
     TWO_QUBIT_GATE_NAMES,
+    VIRTUAL_GATE_NAMES,
     IDENTITY_GATE_NAME,
 )
 
@@ -31,7 +32,9 @@ class MomentBuilder:
             - basis_gates (list[str]): the basis gates to transpile to
         """
         self._registers = registers
-        self._basis_gates = ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES
+        self._basis_gates = (
+            ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES + VIRTUAL_GATE_NAMES
+        )
 
         # set scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly

@@ -1,6 +1,6 @@
 # Packages
 from .pulses import build_pulse_schedule, get_moment_case, build_circuit
-from .models import build_solver, backend_edges
+from .models import build_solver, backend_edges, backend_simulation_vars
 from .compiler import MomentBuilder
 from .qiskit_simulation_utils import qiskit_identity_operator
 
@@ -21,12 +21,18 @@ class ExperimentalSimulator:
         registers: list[int],
         backend: BackendV2,
         coupling_map: Union[list[list[int]], None] = None,
-        solver_kwargs: Union[dict, None] = None,
+        units: float = 1e9,
     ):
+        """Creates an `ExperimentalSimulator` instance.
+        """
         self._registers = registers
         self._backend = backend
 
-        # Top level fields to populate
+        # default configuration variables
+        self._cvars = backend_simulation_vars(backend, rabi=False, units=units)
+        self._solver_kwargs = {}
+
+        # top level fields to populate
         self._unique_schedules_by_case: dict[str, ScheduleBlock] = {}
         self._moments: list[CIRCUIT_MOMENT] = []
 
@@ -36,19 +42,11 @@ class ExperimentalSimulator:
             for edge in backend_edges(backend):
                 if edge[0] in registers and edge[1] in registers:
                     coupling_map.append(edge)
-        
+
         self._moment_builder = MomentBuilder(
             self._registers,
             coupling_map=coupling_map,
         )
-
-        self._solver_kwargs = solver_kwargs
-        self._solver = build_solver(registers, backend, **solver_kwargs)
-        self._open_solver = False
-        if self._open_solver:
-            self._solver.model.evaluation_mode = "sparse_vectorized"
-        else:
-            self._solver.model.evaluation_mode = "sparse"
 
     def simulate_circuit(
         self,
@@ -56,20 +54,51 @@ class ExperimentalSimulator:
         single_qubit_gates: dict[str, ScalableSymbolicPulse],
         two_qubit_gates: dict[str, ScalableSymbolicPulse],
         dt: float,
+        include_crosstalk: bool = False,
+        include_dissipation: bool = False,
         verbose: bool = False,
+        configuration_vars: Union[dict, None] = None,
         atol=1e-9,
         rtol=1e-9,
     ) -> list[Operator]:
-        """Simulate the moments of a circuit."""
-        # build moments (hardcode necessary parameters)
-        self._moments = self._moment_builder.build_moments(
-            circuit,
-            separate_moments=True,
-            no_end_to_end=True,
-            insert_identities=True,
-            optimization_level=0,
-            draw=False,
-        )            
+        """Simulate the moments of a circuit.
+
+        Args:
+            circuit (QuantumCircuit): the input circuit
+            single_qubit_gates (dict[str, ScalableSymbolicPulse]): the single-qubit gates
+            two_qubit_gates (dict[str, ScalableSymbolicPulse]): the two-qubit gates
+            dt (float): the simulation time step
+            include_crosstalk (bool): whether to include crosstalk
+            include_dissipation (bool): whether to include qubit decay
+            verbose (bool): whether to print additional information
+            configuration_vars (dict): the configuration variables
+            atol (float): the absolute tolerance
+            rtol (float): the relative tolerance
+
+        Returns:
+            list[Operator]: the circuit operator after each moment
+        """
+        # build solver
+        self._solver_kwargs = {
+            "include_crosstalk": include_crosstalk,
+            "include_dissipation": include_dissipation,
+            "simulation_vars": (
+                self._cvars if configuration_vars is None else configuration_vars
+            ),
+            "simulation_rabi": False,
+            "simulation_dt": dt,
+        }
+        self._solver = build_solver(self._registers, self._backend, **solver_kwargs)
+
+        # set evaluation mode and initial state
+        self._open_solver = include_dissipation
+        if self._open_solver:
+            self._solver.model.evaluation_mode = "sparse_vectorized"
+        else:
+            self._solver.model.evaluation_mode = "sparse"
+
+        # set circuit moments
+        self._moments = self.build_moments(circuit)
 
         # get unique moments
         unique_moments: list[CIRCUIT_MOMENT] = []
@@ -106,10 +135,8 @@ class ExperimentalSimulator:
                 [case, len(self._unique_schedules_by_case[case]) - 1]
             )
 
-        # TODO: switch based on open / closed system
-        y0 = qiskit_identity_operator(len(self._registers), open=self._open_solver)
-
         # simulate each case
+        y0 = qiskit_identity_operator(len(self._registers), open=self._open_solver)
         unique_results_dict = {}
         for case, schedules in self._unique_schedules_by_case.items():
             if len(schedules) == 0:
@@ -151,5 +178,22 @@ class ExperimentalSimulator:
         else:
             return self._unique_schedules_by_case[case]
 
-    def build_circuit(self, **kwargs) -> QuantumCircuit:
+    def build_moments(self, circuit: QuantumCircuit) -> list[CIRCUIT_MOMENT]:
+        # build moments (hardcode necessary parameters)
+        return self._moment_builder.build_moments(
+            circuit,
+            separate_moments=True,
+            no_end_to_end=True,
+            insert_identities=True,
+            optimization_level=0,
+            draw=False,
+        )
+
+    def build_circuit(
+        self,
+        moments: Union[list[CIRCUIT_MOMENT], None] = None,
+        **kwargs
+    ) -> QuantumCircuit:
+        if moments is None:
+            moments = self._moments
         return build_circuit(self._moments, self._registers, **kwargs)
