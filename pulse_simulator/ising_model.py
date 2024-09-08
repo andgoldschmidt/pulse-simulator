@@ -7,8 +7,8 @@ from typing import Union
 class TransverseIsingModel:
     def __init__(
         self,
-        num_quantum_registers: int = 4,
-        num_classical_registers: int = 0,
+        quantum_registers: int = 4,
+        classical_registers: list[int] = [],
         hz: float = 2 * np.pi,
         Jx: float = 2 * np.pi,
         Δt: float = 0.05,
@@ -23,8 +23,8 @@ class TransverseIsingModel:
             Jx (float): Coupling along x
             Δt (float): time step for integration
         """
-        self._N = num_quantum_registers
-        self._C = num_classical_registers
+        self._N = len(quantum_registers)
+        self._C = len(classical_registers)
         self._hz = hz
         self._Jx = Jx
         self._Δt = Δt

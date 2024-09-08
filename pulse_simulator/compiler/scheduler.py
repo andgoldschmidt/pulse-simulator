@@ -26,7 +26,7 @@ class RobustScheduler:
     def __init__(
         self,
         basis_gates: list[str],
-        coupling_map: Union[CouplingMap, None] = None,
+        coupling_map: CouplingMap,
         reattach: bool = True,
         attach_final_virtual: bool = True,
     ) -> None:
@@ -52,13 +52,12 @@ class RobustScheduler:
             ]
         )
 
-
         # Basis gates are case-sensitive in scheduler
         self._basis_gates = [b.lower() for b in basis_gates]
 
         # if not given, coupling map is linear (depends on the number of qubits)
         self._coupling_map = coupling_map
-        
+      
         self._reattach = reattach
         self._attach_final_virtual = attach_final_virtual
         self._pm = pm
@@ -78,15 +77,6 @@ class RobustScheduler:
         basis_gates = self._basis_gates
         coupling_map = self._coupling_map
 
-        # if not given, coupling map is linear
-        if coupling_map is None:
-            edge_list = []
-            for i in range(qc.num_qubits - 1):
-                edge_list.append([i, i + 1])
-                edge_list.append([i + 1, i])
-            coupling_map = CouplingMap(edge_list)
-            if qc.num_qubits == 1:
-                coupling_map = CouplingMap([[0, 0]])
         transpiled_qc = transpile(
             qc,
             basis_gates=basis_gates,

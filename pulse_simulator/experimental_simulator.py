@@ -23,8 +23,7 @@ class ExperimentalSimulator:
         coupling_map: Union[list[list[int]], None] = None,
         units: float = 1e9,
     ):
-        """Creates an `ExperimentalSimulator` instance.
-        """
+        """Creates an `ExperimentalSimulator` instance."""
         self._registers = registers
         self._backend = backend
 
@@ -37,6 +36,7 @@ class ExperimentalSimulator:
         self._moments: list[CIRCUIT_MOMENT] = []
 
         # set coupling map using backend if not provided
+        # else schedules will not be built correctly
         if coupling_map is None:
             coupling_map: list[list[int]] = []
             for edge in backend_edges(backend):
@@ -57,7 +57,7 @@ class ExperimentalSimulator:
         include_crosstalk: bool = False,
         include_dissipation: bool = False,
         verbose: bool = False,
-        configuration_vars: Union[dict, None] = None,
+        cvars: Union[dict, None] = None,
         atol=1e-9,
         rtol=1e-9,
     ) -> list[Operator]:
@@ -71,7 +71,7 @@ class ExperimentalSimulator:
             include_crosstalk (bool): whether to include crosstalk
             include_dissipation (bool): whether to include qubit decay
             verbose (bool): whether to print additional information
-            configuration_vars (dict): the configuration variables
+            cvars (dict): the configuration variables
             atol (float): the absolute tolerance
             rtol (float): the relative tolerance
 
@@ -82,13 +82,14 @@ class ExperimentalSimulator:
         self._solver_kwargs = {
             "include_crosstalk": include_crosstalk,
             "include_dissipation": include_dissipation,
-            "simulation_vars": (
-                self._cvars if configuration_vars is None else configuration_vars
-            ),
+            "simulation_vars": self._cvars if cvars is None else cvars,
             "simulation_rabi": False,
             "simulation_dt": dt,
         }
-        self._solver = build_solver(self._registers, self._backend, **solver_kwargs)
+
+        self._solver = build_solver(
+            self._registers, self._backend, **self._solver_kwargs
+        )
 
         # set evaluation mode and initial state
         self._open_solver = include_dissipation
@@ -168,7 +169,10 @@ class ExperimentalSimulator:
     def get_moments(self) -> list[CIRCUIT_MOMENT]:
         return self._moments
 
-    def get_schedules(self, case: Union[str, None] = None) -> list[ScheduleBlock]:
+    def get_schedules(
+        self,
+        case: Union[str, None] = None
+    ) -> list[ScheduleBlock]:
         if case is None:
             return [
                 schedule
@@ -190,10 +194,8 @@ class ExperimentalSimulator:
         )
 
     def build_circuit(
-        self,
-        moments: Union[list[CIRCUIT_MOMENT], None] = None,
-        **kwargs
+        self, moments: Union[list[CIRCUIT_MOMENT], None] = None, **kwargs
     ) -> QuantumCircuit:
         if moments is None:
             moments = self._moments
-        return build_circuit(self._moments, self._registers, **kwargs)
+        return build_circuit(moments, self._registers, **kwargs)

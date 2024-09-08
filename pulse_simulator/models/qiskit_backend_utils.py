@@ -5,6 +5,8 @@ from qiskit.pulse.channels import ControlChannel, DriveChannel
 # Global offset for phase channels
 PHASE_CHANNEL_INDEX_SHIFT = 1000
 
+# TODO: All of this needs to be updgraded for Qiskit 1.0
+
 
 def backend_simulation_vars(backend, angular=False, rabi=False, units=1.0):
     """Extract variables for the pulse simulation from the backend.
