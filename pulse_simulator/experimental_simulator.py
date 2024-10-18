@@ -1,6 +1,6 @@
 # Packages
 from .pulses import build_pulse_schedule, get_moment_case, build_circuit
-from .models import build_solver, backend_edges, backend_simulation_vars
+from .models import build_solver, backend_coupling_map, generate_default_simulation_vars
 from .compiler import MomentBuilder
 from .qiskit_simulation_utils import qiskit_identity_operator
 
@@ -21,32 +21,31 @@ class ExperimentalSimulator:
         registers: list[int],
         backend: BackendV2,
         coupling_map: Union[list[list[int]], None] = None,
-        units: float = 1e9,
     ):
         """Creates an `ExperimentalSimulator` instance."""
         self._registers = registers
         self._backend = backend
 
-        # default configuration variables
-        self._cvars = backend_simulation_vars(backend, rabi=False, units=units)
+        # NOTE: V1.0
+        if coupling_map is None:
+            self._coupling_map = backend_coupling_map(self._registers, self._backend)
+        else:
+            self._coupling_map = coupling_map
+
+        # build moment builder
+        self._moment_builder = MomentBuilder(self._registers, self._coupling_map)
+
+        # default solver variables
+        # NOTE: V1.0
+        self._simulation_vars = generate_default_simulation_vars(
+            self._registers, self._coupling_map
+        )
+        # Filled by `simulate_circuit`
         self._solver_kwargs = {}
 
         # top level fields to populate
         self._unique_schedules_by_case: dict[str, ScheduleBlock] = {}
         self._moments: list[CIRCUIT_MOMENT] = []
-
-        # set coupling map using backend if not provided
-        # else schedules will not be built correctly
-        if coupling_map is None:
-            coupling_map: list[list[int]] = []
-            for edge in backend_edges(backend):
-                if edge[0] in registers and edge[1] in registers:
-                    coupling_map.append(edge)
-
-        self._moment_builder = MomentBuilder(
-            self._registers,
-            coupling_map=coupling_map,
-        )
 
     def simulate_circuit(
         self,
@@ -57,7 +56,7 @@ class ExperimentalSimulator:
         include_crosstalk: bool = False,
         include_dissipation: bool = False,
         verbose: bool = False,
-        cvars: Union[dict, None] = None,
+        simulation_vars: Union[dict, None] = None,
         atol=1e-9,
         rtol=1e-9,
     ) -> list[Operator]:
@@ -71,7 +70,7 @@ class ExperimentalSimulator:
             include_crosstalk (bool): whether to include crosstalk
             include_dissipation (bool): whether to include qubit decay
             verbose (bool): whether to print additional information
-            cvars (dict): the configuration variables
+            simulation_vars (dict): the configuration variables
             atol (float): the absolute tolerance
             rtol (float): the relative tolerance
 
@@ -82,8 +81,9 @@ class ExperimentalSimulator:
         self._solver_kwargs = {
             "include_crosstalk": include_crosstalk,
             "include_dissipation": include_dissipation,
-            "simulation_vars": self._cvars if cvars is None else cvars,
-            "simulation_rabi": False,
+            "simulation_vars": (
+                self._simulation_vars if simulation_vars is None else simulation_vars
+            ),
             "simulation_dt": dt,
         }
 
@@ -116,7 +116,7 @@ class ExperimentalSimulator:
         # build unique schedules
         # group by case to match simulation duration
         self._unique_schedules_by_case = {case: [] for case in CIRCUIT_MOMENT_NAMES}
-        unique_moment_index_to_case_index: list[[str, int]] = []
+        unique_moment_index_to_case_index: list[list[str, int]] = []
         for moment in unique_moments:
             schedule = build_pulse_schedule(
                 [moment],
@@ -169,10 +169,7 @@ class ExperimentalSimulator:
     def get_moments(self) -> list[CIRCUIT_MOMENT]:
         return self._moments
 
-    def get_schedules(
-        self,
-        case: Union[str, None] = None
-    ) -> list[ScheduleBlock]:
+    def get_schedules(self, case: Union[str, None] = None) -> list[ScheduleBlock]:
         if case is None:
             return [
                 schedule

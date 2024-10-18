@@ -3,7 +3,6 @@ from typing import Union
 # Used in the `MomentBuilder` class as types
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.circuit import Qubit
-from qiskit.transpiler import CouplingMap
 from qiskit.converters import dag_to_circuit
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.transpiler.passes import RemoveBarriers
@@ -24,7 +23,7 @@ class MomentBuilder:
     def __init__(
         self,
         registers: list[int],
-        coupling_map: Union[list[list[int]], None] = None,
+        coupling_map: list[list[int]],
     ) -> None:
         """Creates a `MomentBuilder` instance.
 
@@ -35,18 +34,6 @@ class MomentBuilder:
         self._basis_gates = (
             ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES + VIRTUAL_GATE_NAMES
         )
-
-        # if not given, coupling map is linear
-        if coupling_map is None:
-            edge_list = []
-            for i, j in zip(registers[1:], registers[:-1]):
-                edge_list.append([i, j])
-                edge_list.append([j, i])
-            coupling_map = CouplingMap(edge_list)
-            if len(registers) == 1:
-                coupling_map = CouplingMap([[0, 0]])
-        else:
-            coupling_map = CouplingMap(coupling_map)
 
         # set scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly

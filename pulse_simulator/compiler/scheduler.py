@@ -26,7 +26,7 @@ class RobustScheduler:
     def __init__(
         self,
         basis_gates: list[str],
-        coupling_map: CouplingMap,
+        coupling_map: list[list[int]],
         reattach: bool = True,
         attach_final_virtual: bool = True,
     ) -> None:
@@ -55,9 +55,7 @@ class RobustScheduler:
         # Basis gates are case-sensitive in scheduler
         self._basis_gates = [b.lower() for b in basis_gates]
 
-        # if not given, coupling map is linear (depends on the number of qubits)
-        self._coupling_map = coupling_map
-      
+        self._coupling_map = CouplingMap(coupling_map)
         self._reattach = reattach
         self._attach_final_virtual = attach_final_virtual
         self._pm = pm

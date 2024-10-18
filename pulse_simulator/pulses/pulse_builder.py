@@ -582,11 +582,14 @@ def play_ecr_moment(
         pulse.play(qubit_gates[f"X{coloring(q0)}"], drive_channel)
         played_qubits.append(q0)
         played_channels.append(drive_channel.name)
+
     fill_unplayed_phases([], duration_1qb, registers, backend)
+
     if insert_identities:
         played_channels += fill_unplayed_single_qubit_gates(
             played_qubits, qubit_gates, registers, coloring, backend
         )
+
     fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
 
     # -ZX
@@ -598,7 +601,9 @@ def play_ecr_moment(
         pulse.play(cr_gates["-"], control_channel)
         played_channels.append(control_channel.name)
         played_pairs.append(qubit)
+
     fill_unplayed_phases([], duration_2qb, registers, backend)
+    
     if insert_identities:
         fill_unplayed_dd_gates(
             played_channels,
