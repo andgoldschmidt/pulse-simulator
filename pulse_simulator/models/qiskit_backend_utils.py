@@ -1,12 +1,14 @@
 import functools
 import numpy as np
 from qiskit.pulse.channels import ControlChannel, DriveChannel
+from qiskit import __version__ as qiskit_version
+from packaging.version import Version
 
 # Global offset for phase channels
 PHASE_CHANNEL_INDEX_SHIFT = 1000
 
 # Types
-from typing import Union, Callable
+from typing import Callable
 
 
 def draw_t1(rng):
@@ -92,6 +94,9 @@ def backend_simulation_vars(backend, angular=False, rabi=False, units=1e9):
     Returns:
         Dict: Backend variables for pulse simulation.
     """
+    if Version(qiskit_version) > Version("1.0.0"):
+        raise Exception("`backend_simulation_vars` requires Qiskit versions < 1.0.0")
+
     GHz = 1 / units
     ns = units
     config = backend.configuration()
@@ -233,19 +238,43 @@ def generate_default_simulation_vars(
 
 def get_channels(registers, backend, allowed_channels=(ControlChannel, DriveChannel)):
     channel_dict = {}
-    for i in registers:
-        for ch in backend.configuration().get_qubit_channels(i):
-            if isinstance(ch, allowed_channels):
-                channel_dict[ch.name] = ch
+    if Version(qiskit_version) > Version("1.0.0"):
+        allowed_channel_names = []
+        # Ignore acquire and measure channels
+        if ControlChannel in allowed_channels:
+            allowed_channel_names.append("control")
+        if DriveChannel in allowed_channels:
+            allowed_channel_names.append("drive")
+        # channels_map
+        # {'acquire': {(0,): [AcquireChannel(0)],...}}
+        for kind, elems in backend.channels_map.items():
+            if kind in allowed_channel_names:
+                for qs, chs in elems.items():
+                    if set(qs).issubset(registers):
+                        for ch in chs:
+                            channel_dict[ch.name] = ch
+    else:
+        for i in registers:
+            for ch in backend.configuration().get_qubit_channels(i):
+                if isinstance(ch, allowed_channels):
+                    channel_dict[ch.name] = ch
+    
     return channel_dict
 
 
 def get_drive_channel(i, backend, name=False):
     # Standard drive channel
-    channels = []
-    for ch in backend.configuration().get_qubit_channels(i):
-        if type(ch) is DriveChannel:
-            channels.append(ch)
+    if Version(qiskit_version) > Version("1.0.0"):
+        ch = backend.drive_channel(i)
+    else:
+        channels = []
+        for ch in backend.configuration().get_qubit_channels(i):
+            if type(ch) is DriveChannel:
+                channels.append(ch)
+        if len(channels) != 1:
+            raise Exception(f"Invalid number of drive channels for qubit {i}")
+        ch = channels[0]
+    
     if name:
         return channels[0].name
     else:
@@ -254,7 +283,10 @@ def get_drive_channel(i, backend, name=False):
 
 def get_phase_channel(i, backend, name=False):
     # Arbitrary index shift based on device qubits
-    n = backend.configuration().n_qubits
+    if Version(qiskit_version) > Version("1.0.0"):
+        n = backend.num_qubits
+    else:
+        n = backend.configuration().n_qubits
     index_shift = int(10 ** np.ceil(np.log10(n)))
 
     # Phase is a mock drive channel
@@ -266,48 +298,68 @@ def get_phase_channel(i, backend, name=False):
 
 
 def get_control_channel(c, t, backend, name=False):
-    # Cross resonance channel
-    try:
-        channels = backend.configuration().control_channels[(c, t)]
-    except KeyError as e:
-        raise Exception(f"Backend edge not found for {c} and {t}") from e
-    if name:
-        return channels[0].name
+    message = f"Backend edge not found for {c} and {t}"
+    if Version(qiskit_version) > Version("1.0.0"):
+        try:
+            ch = backend.control_channel([c, t])[0]
+        except IndexError as e:
+            raise Exception(message) from e
     else:
-        return channels[0]
+        # Cross resonance channel
+        try:
+            ch = backend.configuration().control_channels[(c, t)][0]
+        except KeyError as e:
+            raise Exception(message) from e
+    if name:
+        return ch.name
+    else:
+        return ch
 
 
 def backend_carriers(backend, variables):
+    # TODO: Why is this function needed?
+    if Version(qiskit_version) > Version("1.0.0"):
+        raise Exception("`backend_carriers` requires Qiskit versions < 1.0.0")
+
     n = backend.configuration().n_qubits
     carriers = {
         get_drive_channel(i, backend, name=True): variables[vars_frequency(i)]
         for i in range(n)
     }
-    for c, t in backend_edges(backend, directed=True):
+    for c, t in get_backend_edges(backend, directed=True):
         uct = get_control_channel(c, t, backend, name=True)
         carriers.update({uct: variables[vars_frequency(t)]})
     return carriers
 
 
-def backend_edges(backend, directed=False):
+def get_backend_edges(backend, registers=None, directed=False):
     """Get the unique edges of the provided backend based on allowed two-qubit
     gates.
 
     Arguments:
         backend (qk.providers.fake_provider.FakePulseBackend) -- Backend
+        registers (list[int], optional) -- List of qubits. If None, all qubits
+            are considered. Defaults to None.
+        directed (bool, optional) -- If True, returns directed edges. Defaults to False.
 
     Returns:
         List of unique edges (as tuples)
     """
-    dir_graph = backend.configuration().coupling_map
+    if Version(qiskit_version) > Version("1.0.0"):
+        dir_graph = backend.coupling_map
+    else:
+        dir_graph = backend.configuration().coupling_map
+        
     if not directed:
         dir_graph = np.unique([set(edge) for edge in dir_graph])
-    return [list(edge) for edge in dir_graph]
 
-
-def backend_coupling_map(registers, backend):
-    coupling_map = []
-    for edge in backend_edges(backend):
-        if edge[0] in registers and edge[1] in registers:
-            coupling_map.append(edge)
-    return coupling_map
+    edges = []
+    for edge in dir_graph:
+        edge = list(edge)
+        if registers is not None:
+            if edge[0] in registers and edge[1] in registers:
+                edges.append(edge)
+        else:
+            edges.append(edge)
+    
+    return edges

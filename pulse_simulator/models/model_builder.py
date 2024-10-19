@@ -3,12 +3,12 @@ import numpy as np
 from qiskit_dynamics import Solver
 from typing import Union
 
-from .qiskit_backend_utils import backend_edges
+from .qiskit_backend_utils import get_backend_edges
 from .one_qubit_models import rx_model, rz_model, qubit_decay_model
 from .two_qubit_models import cross_resonance_model, crosstalk_model
 
 # Typing
-from qiskit.providers import BackendV2
+from qiskit.providers import Backend
 
 
 def build_solver(*args, **kwargs) -> Solver:
@@ -25,7 +25,7 @@ def build_solver(*args, **kwargs) -> Solver:
 
 def build_model(
     registers: list,
-    backend: BackendV2,
+    backend: Backend,
     simulation_vars: dict,
     simulation_dt: float,
     include_crosstalk: bool = False,
@@ -68,7 +68,7 @@ def build_model(
         rx_model,
         registers=registers,
         backend=backend,
-        simulation_vars=simulation_vars,
+        variables=simulation_vars,
         rotating_frame=True,
     )
 
@@ -82,15 +82,15 @@ def build_model(
         cross_resonance_model,
         registers=registers,
         backend=backend,
-        simulation_vars=simulation_vars,
+        variables=simulation_vars,
         model_name="Toy",
     )
 
     A_decay = functools.partial(
-        qubit_decay_model, registers=registers, simulation_vars=simulation_vars
+        qubit_decay_model, registers=registers, variables=simulation_vars
     )
 
-    edges = backend_edges(backend)
+    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
 
     # Create a system model
     # =====
@@ -112,7 +112,7 @@ def build_model(
 
     # Two qubit terms
     added_edges = []
-    for control, target in edges:
+    for control, target in undir_edges:
         # Get both directions
         if control in registers and target in registers:
             added_edges.append((control, target))
@@ -125,7 +125,7 @@ def build_model(
         print(f"\tEdges: {added_edges}")
 
     # Crosstalk
-    H_xtalk = crosstalk_model(registers, edges, simulation_vars)
+    H_xtalk = crosstalk_model(registers, undir_edges, simulation_vars)
 
     # Control channels
     # =====
@@ -148,5 +148,5 @@ def build_model(
         "rotating_frame": None,
         "rwa_cutoff_freq": None,
         "channel_carrier_freqs": registered_carriers,
-        "simulation_dt": simulation_dt,
+        "dt": simulation_dt,
     }

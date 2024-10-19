@@ -8,7 +8,7 @@ import re
 from .qiskit_shapes import zero_envelope, constant_envelope
 
 from ..models.qiskit_backend_utils import (
-    backend_edges,
+    get_backend_edges,
     get_channels,
     get_drive_channel,
     get_control_channel,
@@ -478,9 +478,9 @@ def fill_unplayed_dd_gates(
     dd_qubits = []
     dd_channels = []
     target_qubits = [q2 for _, q2 in played_pairs]
-    edges = [set(e) for e in backend_edges(backend)]
+    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
     for pair in combinations(idles, 2):
-        if set(pair) in edges:
+        if set(pair) in undir_edges:
             q1, q2 = pair
             if q2 in dd_qubits or q1 in dd_qubits:
                 # DD not needed if a DD sequence already exists.
@@ -488,9 +488,9 @@ def fill_unplayed_dd_gates(
             else:
                 # Do not play a DD sequence on a target spectator or next to existing DD.
                 active_neighbors = target_qubits + dd_qubits
-                if not has_edge_with(q2, active_neighbors, edges):
+                if not has_edge_with(q2, active_neighbors, undir_edges):
                     qd = q2
-                elif not has_edge_with(q1, active_neighbors, edges):
+                elif not has_edge_with(q1, active_neighbors, undir_edges):
                     qd = q1
                 else:
                     raise ValueError(
