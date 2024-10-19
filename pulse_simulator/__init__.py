@@ -2,7 +2,6 @@ from .compiler import *
 from .models import *
 from .pulses import *
 from .simulator import *
-from .experimental_simulator import *
 from .hilbert_space_labels import (
     char_kron,
     hilbert_space_basis,
