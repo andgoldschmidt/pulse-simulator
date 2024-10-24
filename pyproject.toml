@@ -16,31 +16,26 @@ importlib = "^1.0.4"
 qiskit-dynamics = "^0.4.2"
 ipykernel = "^6.26.0"
 pylatexenc = "^2.10"
-jax = "^0.4.28"
-jaxlib = "^0.4.28"
 sympy = "^1.12"
 qiskit-aer = "^0.13.2"
 tqdm = "^4.66.1"
-
-# GPU jax (for your system)
-# jax = {extras = ["cuda11_pip"], version = "^0.4.20"}
-# jaxlib = {version = "0.4.23+cuda11.cudnn89", source = "jax"}
-
-# [[tool.poetry.source]]
-# name = "jax"
-# url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
-# priority = "primary"
+jax = {extras = ["cuda12"], version = "^0.4.35"}
 
 # dev
 pytest = {version="^7.4.4", optional = true}
 flake8-pyproject = {version="^1.2.3", optional = true}
+qiskit-experiments = "^0.7.0"
 
 [tool.poetry.extras]
 dev = ["pytest"]
 
-
 [[tool.poetry.source]]
 name = "PyPI"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "jax-releases"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
 priority = "primary"
 
 [tool.flake8]
