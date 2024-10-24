@@ -35,6 +35,9 @@ class MomentBuilder:
             ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES + VIRTUAL_GATE_NAMES
         )
 
+        if len(coupling_map) == 0:
+            coupling_map = [[i, i] for i in registers]
+
         # set scheduler to not attach virtual gates since we will extract
         # those from the label of the real gates and treat them accordingly
         self._scheduler = RobustScheduler(

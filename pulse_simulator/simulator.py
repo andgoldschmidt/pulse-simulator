@@ -56,6 +56,7 @@ class Simulator:
         simulation_vars: Union[dict, None] = None,
         atol=1e-9,
         rtol=1e-9,
+        gpu: bool = False,
     ) -> list[Operator]:
         """Simulate the moments of a circuit.
 
@@ -70,6 +71,7 @@ class Simulator:
             simulation_vars (dict): the configuration variables
             atol (float): the absolute tolerance
             rtol (float): the relative tolerance
+            gpu (bool): whether to use GPU acceleration
 
         Returns:
             list[Operator]: the circuit operator after each moment
@@ -89,11 +91,12 @@ class Simulator:
         )
 
         # set evaluation mode and initial state
+        sparse_or_dense = "dense" if gpu else "sparse"
         self._open_solver = include_dissipation
         if self._open_solver:
-            self._solver.model.evaluation_mode = "sparse_vectorized"
+            self._solver.model.evaluation_mode = f"{sparse_or_dense}_vectorized"
         else:
-            self._solver.model.evaluation_mode = "sparse"
+            self._solver.model.evaluation_mode = sparse_or_dense
 
         # set circuit moments
         self._moments = self.build_moments(circuit)
