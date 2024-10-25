@@ -1,6 +1,10 @@
 import functools
 import numpy as np
 from qiskit import QuantumCircuit, quantum_info
+from qiskit.converters import circuit_to_dag, dag_to_circuit
+from collections import OrderedDict
+from qiskit.transpiler.passes import RemoveFinalMeasurements
+from qiskit.transpiler import PassManager
 
 
 def rz_moment(virtual_zs, registers):
@@ -37,3 +41,38 @@ def qiskit_identity_operator(n_qubits, open=False):
         return quantum_info.SuperOp(op)
     else:
         return op
+
+
+def operator_fidelity(
+    a: quantum_info.Operator,
+    b: quantum_info.Operator
+) -> float:
+    a2 = np.trace(a.data.conj().T @ a.data)
+    b2 = np.trace(b.data.conj().T @ b.data)
+    a_b = np.trace(a.data.conj().T @ b.data)
+    return np.abs(a_b / np.sqrt(a2 * b2))**2
+
+
+def remove_idle_wires(circ):
+    """
+    Remove inactive qubits from a circuit.
+    https://quantumcomputing.stackexchange.com/questions/25672/
+    """
+    dag = circuit_to_dag(circ)
+
+    idle_wires = list(dag.idle_wires())
+    for w in idle_wires:
+        dag._remove_idle_wire(w)
+        dag.qubits.remove(w)
+
+    dag.qregs = OrderedDict()
+
+    return dag_to_circuit(dag)
+
+def remove_final_measurement(circ):
+    # Create a pass manager and add the RemoveFinalMeasurements pass
+    pass_manager = PassManager()
+    pass_manager.append(RemoveFinalMeasurements())
+
+    # Apply the pass manager to the circuit
+    return pass_manager.run(circ)

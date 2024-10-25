@@ -1,352 +1,198 @@
-import jax
-import qiskit
-import qiskit_dynamics
-import pulse_simulator as ps
-import matplotlib.pyplot as plt
-import multiprocessing
+# Packages
+from .pulses import build_pulse_schedule, get_moment_case, build_circuit
+from .models import build_solver, get_backend_edges, generate_default_simulation_vars
+from .compiler import MomentBuilder
+from .qiskit_simulation_utils import qiskit_identity_operator
 
-from qiskit import QuantumCircuit, QuantumRegister
-from qiskit.quantum_info import Operator, DensityMatrix
-from qiskit.circuit import Qubit
-from qiskit.providers import BackendV2
-from qiskit.dagcircuit import DAGCircuit
-from qiskit.transpiler.passes import RemoveBarriers
+# Types
+from typing import Union
+from qiskit.providers import Backend
+from qiskit import QuantumCircuit
+from qiskit.quantum_info import Operator
+from qiskit.pulse.library.symbolic_pulses import ScalableSymbolicPulse
+from qiskit.pulse.schedule import ScheduleBlock
 
-from .compiler.scheduler import RobustScheduler
-
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_platform_name", "cpu")
-qiskit_dynamics.array.Array.set_default_backend("jax")
-
-ONE_QUBIT_GATES = ["sx", "x"]
-TWO_QUBIT_GATES = ["ecr"]
-VIRTUAL_GATES = ["rz"]
-
-GATE_DICT = dict[int, str] | dict[tuple[int, int], str]
-VIRTUAL_ZS = dict[int, float]
-SINGLE_MOMENT = tuple[GATE_DICT, VIRTUAL_ZS]
-CIRCUIT_MOMENTS = list[tuple[GATE_DICT, VIRTUAL_ZS]]
+from .pulse_simulator_types import CIRCUIT_MOMENT, CIRCUIT_MOMENT_NAMES
 
 
 class Simulator:
-    """A pulse simulator that uses qiskit-dynamics to simulate a given circuit."""
-
     def __init__(
-        self, basis_gates: list[str], solver: qiskit_dynamics.Solver, backend: BackendV2
+        self,
+        registers: list[int],
+        backend: Backend,
     ):
-        required_pulses = []
-        for gate in basis_gates:
-            if gate in VIRTUAL_GATES:
-                continue
-            elif gate in ONE_QUBIT_GATES:
-                required_pulses += [gate + "_blue", gate + "_red"]
-            elif gate in TWO_QUBIT_GATES:
-                required_pulses += [
-                    "zx+_red",
-                    "zx+_blue",
-                    "zx-_red",
-                    "zx-_blue",
-                ]
-        self._pulses = dict.fromkeys(required_pulses)
-        self._dt = backend.configuration().dt * 1e9
-        self._basis_gates = basis_gates
-        self._solver = solver
+        """Creates a `Simulator` instance."""
+        self._registers = registers
         self._backend = backend
 
-        # set scheduler to not attach viertual gates since we sill extract
-        # those from the label of the real gates and treat them accordingly
-        self._scheduler = RobustScheduler(
-            basis_gates=basis_gates,
-            coupling_map=None,
-            reattach=False,
-            attach_final_virtual=False,
+        # Get backend coupling map as a list of edges
+        self._coupling_map = get_backend_edges(
+            self._backend, registers=self._registers, directed=True
         )
 
-    def set_solver(self, solver: qiskit_dynamics.Solver) -> None:
-        self._solver = solver
+        # build moment builder
+        self._moment_builder = MomentBuilder(self._registers, self._coupling_map)
 
-    def set_pulse(self, name: str, pulse: qiskit.pulse.Waveform) -> None:
-        if name not in self._pulses.keys():
-            raise Exception(f"Pulse {name} not required for simulation.")
-        self._pulses[name] = pulse
+        # default solver variables (NOTE: V1.0)
+        self._simulation_vars = generate_default_simulation_vars(
+            self._registers, self._coupling_map
+        )
+        # Filled by `simulate_circuit`
+        self._solver_kwargs = {}
 
-    def get_compiled_circuit(
-        self, circuit: QuantumCircuit, separate_moments: bool = True
-    ) -> QuantumCircuit:
-        circuit = RemoveBarriers()(circuit)
-        # use scheduler that will attach all virtual gates
-        scheduler = RobustScheduler(basis_gates=self._basis_gates)
-        return scheduler.run(circuit, separate_moments=separate_moments)
+        # top level fields to populate
+        self._unique_schedules_by_case: dict[str, ScheduleBlock] = {}
+        self._moments: list[CIRCUIT_MOMENT] = []
 
     def simulate_circuit(
         self,
         circuit: QuantumCircuit,
-        draw: bool = False,
-        superop: bool = False,
-        separate_moments: bool = True,
-    ) -> DensityMatrix:
-        # check that all pulses are loaded correctly
-        pulses = self._pulses
-        for gate_name in pulses:
-            if pulses[gate_name] is None:
-                continue
-                raise Exception(f"Pulse {gate_name} not loaded.")
+        single_qubit_gates: dict[str, ScalableSymbolicPulse],
+        two_qubit_gates: dict[str, ScalableSymbolicPulse],
+        dt: float,
+        include_crosstalk: bool = False,
+        include_dissipation: bool = False,
+        verbose: bool = False,
+        simulation_vars: Union[dict, None] = None,
+        atol=1e-9,
+        rtol=1e-9,
+        gpu: bool = False,
+    ) -> list[Operator]:
+        """Simulate the moments of a circuit.
 
-        # get moments dicts from scheduler
-        moments = self._get_moments(circuit=circuit, separate_moments=separate_moments)
+        Args:
+            circuit (QuantumCircuit): the input circuit
+            single_qubit_gates (dict[str, ScalableSymbolicPulse]): the single-qubit gates
+            two_qubit_gates (dict[str, ScalableSymbolicPulse]): the two-qubit gates
+            dt (float): the simulation time step
+            include_crosstalk (bool): whether to include crosstalk
+            include_dissipation (bool): whether to include qubit decay
+            verbose (bool): whether to print additional information
+            simulation_vars (dict): the configuration variables
+            atol (float): the absolute tolerance
+            rtol (float): the relative tolerance
+            gpu (bool): whether to use GPU acceleration
+
+        Returns:
+            list[Operator]: the circuit operator after each moment
+        """
+        # build solver
+        self._solver_kwargs = {
+            "include_crosstalk": include_crosstalk,
+            "include_dissipation": include_dissipation,
+            "simulation_vars": (
+                self._simulation_vars if simulation_vars is None else simulation_vars
+            ),
+            "simulation_dt": dt,
+        }
+
+        self._solver = build_solver(
+            self._registers, self._backend, **self._solver_kwargs
+        )
+
+        # set evaluation mode and initial state
+        sparse_or_dense = "dense" if gpu else "sparse"
+        self._open_solver = include_dissipation
+        if self._open_solver:
+            self._solver.model.evaluation_mode = f"{sparse_or_dense}_vectorized"
+        else:
+            self._solver.model.evaluation_mode = sparse_or_dense
+
+        # set circuit moments
+        self._moments = self.build_moments(circuit)
 
         # get unique moments
-        unique_moments = []
-        moment_keys = []
-        moments_to_unique_moments = []
+        unique_moments: list[CIRCUIT_MOMENT] = []
+        unique_frozen_moments: list[frozenset] = []
+        moment_to_unique_moment_index: list[int] = []
+        for m in self._moments:
+            frozen_m = frozenset(m.items())
+            if frozen_m not in unique_frozen_moments:
+                unique_moments.append(m)
+                unique_frozen_moments.append(frozen_m)
+            # store how to find each moment
+            moment_to_unique_moment_index.append(unique_frozen_moments.index(frozen_m))
 
-        for moment in moments:
-            key = (frozenset(moment[0].items()), frozenset(moment[1].items()), moment[2])
-            if key in moment_keys:
-                index = moment_keys.index(key)
-                moments_to_unique_moments.append(index)
+        # build unique schedules
+        # group by case to match simulation duration
+        self._unique_schedules_by_case = {case: [] for case in CIRCUIT_MOMENT_NAMES}
+        unique_moment_index_to_case_index: list[list[str, int]] = []
+        for moment in unique_moments:
+            schedule = build_pulse_schedule(
+                [moment],
+                qubit_gates=single_qubit_gates,
+                cr_gates=two_qubit_gates,
+                registers=self._registers,
+                backend=self._backend,
+                name=f"unique-moment-{unique_moments.index(moment)}",
+                dt=dt,
+                insert_identities=True,
+                verbose=verbose,
+            )
+            case = get_moment_case(moment)
+            self._unique_schedules_by_case[case].append(schedule)
+            # store how to find each unique schedule
+            unique_moment_index_to_case_index.append(
+                [case, len(self._unique_schedules_by_case[case]) - 1]
+            )
+
+        # simulate each case
+        y0 = qiskit_identity_operator(len(self._registers), open=self._open_solver)
+        unique_results_dict = {}
+        for case, schedules in self._unique_schedules_by_case.items():
+            if len(schedules) == 0:
+                continue
             else:
-                unique_moments.append(moment)
-                moment_keys.append(key)
-                moments_to_unique_moments.append(len(unique_moments) - 1)
-        
-        # prepare objects for simulation
-        num_qubits = circuit.num_qubits
-        num_unique_moments = len(unique_moments)
+                final_time = schedules[0].duration * dt
+                results = self._solver.solve(
+                    t_span=[0.0, final_time],
+                    t_eval=[final_time],
+                    y0=y0,
+                    signals=schedules,
+                    atol=atol,
+                    rtol=rtol,
+                    method="jax_odeint",
+                )
+                unique_results_dict[case] = [r.y[-1] for r in results]
 
-        # multiprocessing queue
-        queue = multiprocessing.Manager().Queue()
-
-        # create threads for each unique moment
-        with multiprocessing.Pool(num_unique_moments) as pool:
-            for moment in unique_moments:
-                key = (frozenset(moment[0].items()), frozenset(moment[1].items()), moment[2])
-                gates = moment[0]
-                virtual_zs = moment[1]
-                moment_n_qubits = moment[2]
-                if moment_n_qubits == 1:
-                    pool.apply_async(
-                        self._simulate_one_qubit_moment,
-                        args=(gates, virtual_zs, num_qubits, draw, superop, key),
-                        callback=queue.put
-                    )
-                elif moment_n_qubits == 2:
-                    pool.apply_async(
-                        self._simulate_two_qubit_moment,
-                        args=(gates, virtual_zs, num_qubits, draw, superop, key),
-                        callback=queue.put
-                    )
-            # wait for all tasks to complete
-            pool.close()
-            pool.join()
-
-        # get results from queue
-        results = [None] * num_unique_moments
-        for _ in range(num_unique_moments):
-            key, unitary = queue.get()
-            results[moment_keys.index(key)] = unitary
-        
-        # use moments_to_unique_moments to multiply results in the correct order
-        out = Operator(QuantumCircuit(num_qubits))
-        for index in moments_to_unique_moments:
-            out = results[index] @ out        
+        # multiply results in order
+        out: list[Operator] = [None] * (len(self._moments) + 1)
+        out[0] = Operator(QuantumCircuit(len(self._registers)))
+        for i, index in enumerate(moment_to_unique_moment_index):
+            case, case_index = unique_moment_index_to_case_index[index]
+            results = unique_results_dict[case]
+            yf = results[case_index]
+            out[i + 1] = yf @ out[i]
 
         return out
 
-    def _simulate_one_qubit_moment(
-        self,
-        gates: GATE_DICT,
-        virtual_zs: VIRTUAL_ZS,
-        num_qubits: int,
-        draw: bool = False,
-        superop: bool = False,
-        key = None,
-    ) -> Operator:
-        solver = self._solver
-        dt = self._dt
-        pulses = self._pulses
+    def get_moments(self) -> list[CIRCUIT_MOMENT]:
+        return self._moments
 
-        with qiskit.pulse.build() as pulse_moment:
-            for qubit in gates:
-                channel = qiskit.pulse.DriveChannel(qubit)
-                qiskit.pulse.play(pulses[gates[qubit]], channel)
+    def get_schedules(self, case: Union[str, None] = None) -> list[ScheduleBlock]:
+        if case is None:
+            return [
+                schedule
+                for schedules in self._unique_schedules_by_case.values()
+                for schedule in schedules
+            ]
+        else:
+            return self._unique_schedules_by_case[case]
 
-        y0 = ps.qiskit_identity_operator(num_qubits)
-        if superop:
-            y0 = qiskit.quantum_info.SuperOp(y0)
-            solver.model.evaluation_mode = "dense_vectorized"
-
-        if draw:
-            pulse_moment.draw()
-            plt.show()
-
-        duration = pulse_moment.duration
-        sol = solver.solve(
-            t_span=[0.0, duration * dt],
-            y0=y0,
-            signals=pulse_moment,
-            max_dt=dt,
-            t_eval=[0.0, duration * dt],
-            method="jax_expm",
-            magnus_order=1,
+    def build_moments(self, circuit: QuantumCircuit) -> list[CIRCUIT_MOMENT]:
+        # build moments (hardcode necessary parameters)
+        return self._moment_builder.build_moments(
+            circuit,
+            separate_moments=True,
+            no_end_to_end=True,
+            insert_identities=True,
+            optimization_level=0,
+            draw=False,
         )
-        op = sol.y[-1]
 
-        for i in range(num_qubits):
-            if i not in virtual_zs:
-                virtual_zs[i] = 0.0
-        rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
-
-        if key is not None:
-            return key, op @ rzs
-        return op @ rzs
-
-    def _simulate_two_qubit_moment(
-        self,
-        gates: GATE_DICT,
-        virtual_zs: VIRTUAL_ZS,
-        num_qubits: int,
-        draw: bool = False,
-        superop: bool = False,
-        key = None,
-    ) -> Operator:
-        solver = self._solver
-        dt = self._dt
-        pulses = self._pulses
-        backend = self._backend
-
-        with qiskit.pulse.build() as pulse_moment:
-            for q0, q1 in gates:
-                gate_color = gates[(q0, q1)].split("_")[1]
-                drive_channel = ps.get_drive_channel(q0, backend)
-                control_channel = ps.get_control_channel(q0, q1, backend)
-                zx_p = pulses[f"zx+_{gate_color}"]
-                zx_n = pulses[f"zx-_{gate_color}"]
-                x = pulses[f"x_{gate_color}"]
-
-                # control channel is for R_ZX
-                qiskit.pulse.play(zx_p, control_channel)
-                qiskit.pulse.play(
-                    qiskit.pulse.Constant(x.duration, 0.0), control_channel
-                )
-                qiskit.pulse.play(zx_n, control_channel)
-
-                # drive channel is for R_X
-                qiskit.pulse.play(
-                    qiskit.pulse.Constant(zx_p.duration, 0.0), drive_channel
-                )
-                qiskit.pulse.play(x, drive_channel)
-                qiskit.pulse.play(
-                    qiskit.pulse.Constant(zx_n.duration, 0.0), drive_channel
-                )
-
-        if draw:
-            pulse_moment.draw()
-            plt.show()
-
-        y0 = ps.qiskit_identity_operator(num_qubits)
-        if superop:
-            y0 = qiskit.quantum_info.SuperOp(y0)
-            solver.model.evaluation_mode = "dense_vectorized"
-
-        duration = pulse_moment.duration
-        sol = solver.solve(
-            t_span=[0.0, duration * dt],
-            y0=y0,
-            signals=pulse_moment,
-            max_dt=dt,
-            t_eval=[0.0, duration * dt],
-            method="jax_expm",
-            magnus_order=1,
-        )
-        op = sol.y[-1]
-
-        for i in range(num_qubits):
-            if i not in virtual_zs:
-                virtual_zs[i] = 0.0
-        rzs = ps.rz_moment(virtual_zs, [i for i in range(num_qubits)])
-        
-        if key is not None:
-            return key, op @ rzs
-        return op @ rzs
-
-    def _get_moments(
-        self, circuit: QuantumCircuit, separate_moments: bool = True
-    ) -> CIRCUIT_MOMENTS:
-        n = circuit.num_qubits
-        one_q_coloring, two_q_coloring = self._get_coloring(n)
-
-        # scheduled circuits and get output dag
-        circuit = RemoveBarriers()(circuit)
-        scheduled_dag = self._scheduler.run(
-            circuit, separate_moments=separate_moments, return_dag=True
-        )
-        subdags: list[DAGCircuit] = [layer["graph"] for layer in scheduled_dag.layers()]
-
-        # build moments dicts
-        moments: CIRCUIT_MOMENTS = []
-        for subdag in subdags:
-            gates = subdag.op_nodes(include_directives=True)
-
-            gates_dict = {}
-            virtual_zs = {}
-            for gate in gates:
-                if gate.op.name == "barrier":
-                    break
-                qargs = gate.qargs
-
-                # one-qubit operation
-                if len(qargs) == 1:
-                    qubit = qargs[0]
-                    index = scheduled_dag.find_bit(qubit).index
-                    color = one_q_coloring[index]
-                    gates_dict[index] = f"{gate.op.name}_{color}"
-
-                    if virtual := gate.op.label:
-                        virtual_zs.update(self._virtual_str_to_dict(virtual))
-
-                # two-qubit operation
-                elif len(qargs) == 2:
-                    q0, q1 = qargs[0], qargs[1]
-                    i0 = scheduled_dag.find_bit(q0).index
-                    i1 = scheduled_dag.find_bit(q1).index
-                    color = two_q_coloring[tuple({i0, i1})]
-                    gates_dict[(i0, i1)] = f"{gate.op.name}_{color}"
-
-                    if virtuals := gate.op.label:
-                        for virtual in virtuals.split("&"):
-                            virtual_zs.update(self._virtual_str_to_dict(virtual))
-
-            if gates_dict:
-                moments.append((gates_dict, virtual_zs, len(qargs)))
-
-        if final_virtuals := self._scheduler._final_virtuals:
-            virtual_zs = {}
-            for qubit in final_virtuals:
-                virtual_zs.update(self._virtual_str_to_dict(final_virtuals[qubit]))
-            moments.append(({}, virtual_zs, 1))
-
-        return moments
-
-    def _virtual_str_to_dict(self, virtual: str) -> dict[int, str]:
-        processed = virtual.split("|")
-        params = eval(processed[1])
-        qargs = eval(processed[2])
-        return {qargs._index: params[0]}
-
-    # TODO: generalize for any connectivity?
-    def _get_coloring(
-        self, n: int
-    ) -> tuple[dict[int, str], dict[tuple[int, int], str]]:
-        one_q_coloring = {
-            qubit: "red" if qubit % 2 == 0 else "blue" for qubit in range(n)
-        }
-
-        flag = True
-        two_q_coloring = {}
-        for qubit in range(n - 1):
-            if qubit % 2 == 0:
-                flag = not flag
-            two_q_coloring[tuple({qubit, qubit + 1})] = "blue" if flag else "red"
-
-        return one_q_coloring, two_q_coloring
+    def build_circuit(
+        self, moments: Union[list[CIRCUIT_MOMENT], None] = None, **kwargs
+    ) -> QuantumCircuit:
+        if moments is None:
+            moments = self._moments
+        return build_circuit(moments, self._registers, **kwargs)

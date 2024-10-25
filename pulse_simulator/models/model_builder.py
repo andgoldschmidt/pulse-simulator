@@ -3,9 +3,12 @@ import numpy as np
 from qiskit_dynamics import Solver
 from typing import Union
 
-from .qiskit_backend_utils import backend_simulation_vars, backend_edges
+from .qiskit_backend_utils import get_backend_edges
 from .one_qubit_models import rx_model, rz_model, qubit_decay_model
 from .two_qubit_models import cross_resonance_model, crosstalk_model
+
+# Typing
+from qiskit.providers import Backend
 
 
 def build_solver(*args, **kwargs) -> Solver:
@@ -22,14 +25,12 @@ def build_solver(*args, **kwargs) -> Solver:
 
 def build_model(
     registers: list,
-    backend,
+    backend: Backend,
+    simulation_vars: dict,
+    simulation_dt: float,
     include_crosstalk: bool = False,
     include_dissipation: bool = False,
     verbose: bool = False,
-    simulation_units: float = 1e9,
-    simulation_rabi: bool = False,
-    simulation_dt: Union[float, None] = None,
-    simulation_vars: Union[dict, None] = None,
 ) -> dict:
     """
     Build a model for the given Qiskit backend and registers.
@@ -37,38 +38,27 @@ def build_model(
     This function can be useful for inspecting the model parameters, or for
     making custom modifications to the model before passing to the solver.
 
-    The simulation variables are are constructed from the provided backend if they are
-    not provided directly. Note that if the `simulation_rabi` is True, you have to
-    calibrate. The `simulation_units` are used to convert the backend units to the
-    desired units. The `simulation_dt` is used to set the simulation time step, and
-    can be set to the backend time step if not provided.
+    The simulation `simulation_vars` should be constructed to reflect the provided backend.
+    The utilities for this are in `qiskit_backend_utils`. The `simulation_dt` is used to set
+    the simulation timestep, and it should be in the same units as `simulation_vars`.
 
     Args:
         registers (list): The qubit registers to simulate.
         backend (Backend): The backend to simulate.
-        include_crosstalk (bool): Include crosstalk in the simulation.
-        include_dissipation (bool): Include qubit decay in the simulation.
-        verbose (bool): Print additional information.
-        simulation_units (float): The units to use for the simulation.
-        simulation_rabi (bool): Use the backend Rabi frequency.
+        simulation_vars (dict): The simulation simulation_vars.
         simulation_dt (float): The simulation time step.
-        simulation_vars (dict): The simulation variables.
+        include_crosstalk (bool, optional): Include crosstalk in the simulation.
+            Default: False.
+        include_dissipation (bool, optional): Include qubit decay in the simulation.
+            Default: False.
+        verbose (bool, optional): Print additional information. Default: False.
 
     Returns:
         dict: The model parameters for the given backend and registers.
     """
-    if simulation_dt is None:
-        simulation_dt = backend.configuration().dt * simulation_units
-
-    if simulation_vars is None:
-        simulation_vars = backend_simulation_vars(
-            backend, rabi=simulation_rabi, units=simulation_units
-        )
-
     if verbose:
         print(f"Building {backend.name()} model...")
         print(f"\tTimestep: {simulation_dt: 0.2f}")
-        print(f"\tRabi: {simulation_rabi}")
         print(f"\tCrosstalk: {include_crosstalk}")
         print(f"\tDissipation: {include_dissipation}")
 
@@ -100,7 +90,7 @@ def build_model(
         qubit_decay_model, registers=registers, variables=simulation_vars
     )
 
-    edges = backend_edges(backend)
+    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
 
     # Create a system model
     # =====
@@ -122,7 +112,7 @@ def build_model(
 
     # Two qubit terms
     added_edges = []
-    for control, target in edges:
+    for control, target in undir_edges:
         # Get both directions
         if control in registers and target in registers:
             added_edges.append((control, target))
@@ -135,7 +125,7 @@ def build_model(
         print(f"\tEdges: {added_edges}")
 
     # Crosstalk
-    H_xtalk = crosstalk_model(registers, edges, simulation_vars)
+    H_xtalk = crosstalk_model(registers, undir_edges, simulation_vars)
 
     # Control channels
     # =====

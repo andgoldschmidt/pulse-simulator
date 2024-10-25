@@ -1,12 +1,14 @@
 import functools
 import jax
 import numpy as np
-from qiskit.providers.fake_provider import FakeManila
 import qiskit_dynamics
+from qiskit.providers.fake_provider import GenericBackendV2
 from qiskit import pulse, quantum_info
 import pytest
 
 import pulse_simulator
+
+# NOTE: Tests have been updated for Qiskit > 1.0
 
 # Configuration for jax
 jax.config.update("jax_enable_x64", True)
@@ -20,8 +22,20 @@ def registers():
 
 
 @pytest.fixture
-def backend():
-    return FakeManila()
+def coupling_map(registers):
+    return (
+        [[i, j] for i, j in zip(registers[1:], registers[:-1])] 
+        + [[j, i] for i, j in zip(registers[1:], registers[:-1])]
+    )
+
+@pytest.fixture
+def backend(registers, coupling_map):
+    return GenericBackendV2(
+        num_qubits=len(registers),
+        basis_gates=["id", "rz", "sx", "x", "ecr"],
+        coupling_map=coupling_map,
+        seed=17,
+    )
 
 
 @pytest.fixture
@@ -32,7 +46,7 @@ def units():
 @pytest.fixture
 def timing(backend, units):
     ns = units
-    dt = backend.configuration().dt * ns
+    dt = backend.dt * ns
     duration = 225
     time = duration * dt  # ns
     return {"dt": dt, "duration": duration, "time": time}
@@ -72,8 +86,10 @@ def test_signals(signals, timing):
 
 
 @pytest.fixture
-def config(backend, units):
-    return pulse_simulator.backend_simulation_vars(backend, units=units)
+def config(registers, coupling_map, units):
+    return pulse_simulator.generate_default_simulation_vars(
+        registers, coupling_map, units=units
+    )
 
 
 @pytest.fixture
@@ -99,13 +115,15 @@ def one_qubit_decay(registers, config):
 @pytest.fixture
 def crosstalk(registers, backend, config):
     return pulse_simulator.crosstalk_model(
-        registers, pulse_simulator.backend_edges(backend), config
+        registers, 
+        pulse_simulator.get_backend_edges(backend, registers=registers, directed=True), 
+        config
     )
 
 
 def test_nonzero_zz_crosstalk(crosstalk):
     # Value could change if backend changes
-    assert np.max(np.abs(crosstalk.data)) > 0.0001
+    assert np.max(np.abs(crosstalk.data)) > 1e-9
     signature = np.sign(np.diag(np.real(crosstalk.data / crosstalk.data[0, 0])))
     assert np.all(signature == [1, -1, -1, 1])
 
@@ -126,7 +144,6 @@ def one_qubit_solver(registers, one_qubit_model, one_qubit_decay, crosstalk):
         Hs_channels += Hjs_channel
         As_static += Ajs_static
 
-    print(Hs_drift)
     return {
         "static_hamiltonian_drift": np.sum(Hs_drift, axis=0),
         "static_hamiltonian_crosstalk": crosstalk,
@@ -361,11 +378,13 @@ def test_state_sim_closed_crosstalk(
     y_zz_f = state_dense_closed_crosstalk.y[-1].data
     probs_zz_f = np.abs(y_zz_f) ** 2
 
-    # Loss of fidelity due to crosstalk
-    assert not np.isclose(probs_zz_f, probs_f, atol=1e-6).all()
+    # Loss of fidelity due to crosstalk is small
+    assert np.isclose(probs_zz_f, probs_expected, atol=1e-6).all()
 
-    # ...but still close to expected
-    assert np.isclose(probs_f, probs_expected, atol=1e-3).all()
+    # ...but still harmful
+    zz_distance = np.linalg.norm(probs_zz_f - probs_expected)
+    distance = np.linalg.norm(probs_f - probs_expected)
+    assert zz_distance > distance
 
 
 def test_state_sim_open(

@@ -8,28 +8,25 @@ import re
 from .qiskit_shapes import zero_envelope, constant_envelope
 
 from ..models.qiskit_backend_utils import (
-    backend_edges,
+    get_backend_edges,
     get_channels,
     get_drive_channel,
     get_control_channel,
     get_phase_channel,
 )
 
+from ..pulse_simulator_types import (
+    ONE_QUBIT_GATE_NAMES,
+    TWO_QUBIT_GATE_NAMES,
+    CIRCUIT_MOMENT_NAMES,
+    IDENTITY_GATE_NAME,
+)
+
 DURATION_PHASE_GATE = 1  # Duration of the phase gate in dt units
-VALID_GATE_TYPES = ("X", "SX", "ID", "ECR")
-VALID_MOMENT_TYPES = ("single", "ecr", "phase")
 
 
 def alternating_coloring(qubit):
     return 1 if qubit % 2 == 0 else 2
-
-
-def valid_moment_types():
-    return VALID_MOMENT_TYPES
-
-
-def valid_gate_types():
-    return VALID_GATE_TYPES
 
 
 def parse_moments(list_of_moments, registers):
@@ -43,7 +40,7 @@ def parse_moments(list_of_moments, registers):
         A dictionary with the moment types as keys and the number of moments
         of each type as values.
     """
-    case_list = {case: 0 for case in VALID_MOMENT_TYPES}
+    case_list = {case: 0 for case in CIRCUIT_MOMENT_NAMES}
     for moment in list_of_moments:
         check_moment(moment, registers)
         case = get_moment_case(moment)
@@ -62,7 +59,9 @@ def check_moment(moment, registers):
 
 
 def check_gate_label(label, number, allowed_numbers=[1, 2]):
-    assert label in VALID_GATE_TYPES, f"Invalid gate label: {label}"
+    assert (
+        label.lower() in ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES
+    ), f"Invalid gate label: {label}"
     assert number in allowed_numbers, f"Invalid qubit number: {number}"
 
 
@@ -149,6 +148,8 @@ def flatten_tuples(iter_of_tuples):
 def get_moment_case(moment):
     """Get the type of a moment.
 
+    TODO: Hardcoded names
+
     Arguments:
         moment -- the moment to be checked
 
@@ -168,7 +169,7 @@ def get_moment_case(moment):
     else:
         raise ValueError("Could not parse moment case.")
 
-    if case not in VALID_MOMENT_TYPES:
+    if case not in CIRCUIT_MOMENT_NAMES:
         return f"Invalid moment type: {case}"
     else:
         return case
@@ -176,6 +177,8 @@ def get_moment_case(moment):
 
 def durations_of_moments(list_of_moments, duration_1qb, duration_2qb):
     """Get the list of durations corresponding to a list of moments.
+
+    TODO: Hardcoded names
 
     Can be combined with accumulate to get the timestep after each moment.
 
@@ -411,7 +414,7 @@ def fill_unplayed_single_qubit_gates(
     for q in registers:
         if q not in played_qubits:
             drive_channel = get_drive_channel(q, backend)
-            pulse.play(qubit_gates[f"I{coloring(q)}"], drive_channel)
+            pulse.play(qubit_gates[f"{IDENTITY_GATE_NAME}{coloring(q)}"], drive_channel)
             played_channels.append(drive_channel.name)
     return played_channels
 
@@ -475,9 +478,9 @@ def fill_unplayed_dd_gates(
     dd_qubits = []
     dd_channels = []
     target_qubits = [q2 for _, q2 in played_pairs]
-    edges = [set(e) for e in backend_edges(backend)]
+    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
     for pair in combinations(idles, 2):
-        if set(pair) in edges:
+        if set(pair) in undir_edges:
             q1, q2 = pair
             if q2 in dd_qubits or q1 in dd_qubits:
                 # DD not needed if a DD sequence already exists.
@@ -485,13 +488,14 @@ def fill_unplayed_dd_gates(
             else:
                 # Do not play a DD sequence on a target spectator or next to existing DD.
                 active_neighbors = target_qubits + dd_qubits
-                if not has_edge_with(q2, active_neighbors, edges):
+                if not has_edge_with(q2, active_neighbors, undir_edges):
                     qd = q2
-                elif not has_edge_with(q1, active_neighbors, edges):
+                elif not has_edge_with(q1, active_neighbors, undir_edges):
                     qd = q1
                 else:
                     raise ValueError(
-                        f"DD Error: Idle pair ({q1, q2}) are next to active neighbors (target or DD)."
+                        f"DD Error: Idle pair ({q1, q2}) are next to active neighbors "
+                        "(target or DD)."
                     )
 
                 dd_channel = get_drive_channel(qd, backend)
@@ -578,11 +582,14 @@ def play_ecr_moment(
         pulse.play(qubit_gates[f"X{coloring(q0)}"], drive_channel)
         played_qubits.append(q0)
         played_channels.append(drive_channel.name)
+
     fill_unplayed_phases([], duration_1qb, registers, backend)
+
     if insert_identities:
         played_channels += fill_unplayed_single_qubit_gates(
             played_qubits, qubit_gates, registers, coloring, backend
         )
+
     fill_unplayed_channels(played_channels, duration_1qb, registers, backend)
 
     # -ZX
@@ -594,7 +601,9 @@ def play_ecr_moment(
         pulse.play(cr_gates["-"], control_channel)
         played_channels.append(control_channel.name)
         played_pairs.append(qubit)
+
     fill_unplayed_phases([], duration_2qb, registers, backend)
+    
     if insert_identities:
         fill_unplayed_dd_gates(
             played_channels,
@@ -614,6 +623,8 @@ def play_ecr_moment(
 def qiskit_gate_dispatch(label, q0, circuit, q1=None):
     """Dispatch a gate to the Qiskit circuit.
 
+    TODO: Hardcoded names
+
     Arguments:
         label -- the label of the gate
         q0 -- the qubit to be acted upon
@@ -628,25 +639,32 @@ def qiskit_gate_dispatch(label, q0, circuit, q1=None):
     Returns:
         The Qiskit circuit with the gate applied
     """
-    if label not in VALID_GATE_TYPES:
+    if label not in ONE_QUBIT_GATE_NAMES + TWO_QUBIT_GATE_NAMES:
         raise ValueError(f"Invalid gate label: {label}")
 
-    if label == "X":
+    ll = label.lower()
+    if ll == "x":
         return circuit.x(q0)
-    elif label == "SX":
+    elif ll == "sx":
         return circuit.sx(q0)
-    elif label == "ID":
+    elif ll == "id":
         return circuit.id(q0)
-    elif label == "ECR":
+    elif ll == "ecr":
         return circuit.ecr(q0, q1)
     else:
         raise ValueError(f"No dispatch for gate label: {label}")
 
 
 def build_circuit(
-    moments, registers, includes_coloring=False, insert_identities=False, barriers=False
+    moments,
+    registers,
+    includes_coloring=False,
+    insert_identities=False,
+    insert_barriers=False,
 ):
     """Build a Qiskit circuit from a list of moments.
+
+    TODO: Hardcoded names
 
     Arguments:
         moments -- the moments to be played in the circuit
@@ -674,7 +692,7 @@ def build_circuit(
             if insert_identities:
                 for q0 in registers:
                     if q0 not in played_qubits:
-                        qiskit_gate_dispatch("ID", q0, circ)
+                        qiskit_gate_dispatch(IDENTITY_GATE_NAME, q0, circ)
         elif case == "phase":
             for q0, value in moment.items():
                 circ.rz(value, q0)
@@ -683,7 +701,7 @@ def build_circuit(
                 qiskit_gate_dispatch(label="ECR", q0=q0, q1=q1, circuit=circ)
         else:
             raise ValueError(f"Unknown case: {case}")
-        if barriers:
+        if insert_barriers:
             circ.barrier()
     return circ
 
