@@ -5,13 +5,36 @@ import pytest
 
 
 @pytest.fixture
-def moment_builder():
-    return MomentBuilder()
+def cyclic_registers():
+    return range(4)
 
 
 @pytest.fixture
-def cyclic_moment_builder():
-    return MomentBuilder(coupling_map=[[0, 1], [1, 2], [2, 3], [0, 3]])
+def cyclic_coupling_map(cyclic_registers):
+    one_dir = [[r, (r+1) % len(cyclic_registers)] for r in cyclic_registers]
+    return one_dir + [[r[1], r[0]] for r in one_dir]
+
+
+@pytest.fixture
+def non_cyclic_coupling_map(cyclic_registers):
+    one_dir = [[r, r+1] for r in cyclic_registers[:-1]]
+    return one_dir + [[r[1], r[0]] for r in one_dir]
+
+
+@pytest.fixture
+def cyclic_moment_builder(cyclic_registers, cyclic_coupling_map):
+    return MomentBuilder(
+        registers=cyclic_registers,
+        coupling_map=cyclic_coupling_map
+    )
+
+
+@pytest.fixture
+def moment_builder(cyclic_registers, non_cyclic_coupling_map):
+    return MomentBuilder(
+        registers=cyclic_registers,
+        coupling_map=non_cyclic_coupling_map
+    )
 
 
 def test_moment_builder(moment_builder: MomentBuilder):
@@ -21,89 +44,92 @@ def test_moment_builder(moment_builder: MomentBuilder):
 
     expected = [
         {0: 1.5707963267948966, 1: -3.141592653589793},
-        {0: "SX", 1: "SX"},
+        {0: 'SX', 1: 'SX', 2: 'ID', 3: 'ID'},
         {1: -3.141592653589793},
         {(0, 1): "ECR"},
-        {0: "X"},
+        {0: 'X', 1: 'ID', 2: 'ID', 3: 'ID'},
     ]
     assert moment_builder.build_moments(qc) == expected
 
 
-def test_moment_builder_timed(moment_builder: MomentBuilder):
-    qc = QuantumCircuit(2)
-    qc.sx(0)
-    qc.sx(1)
-    qc.barrier()
-    qc.ecr(0, 1)
-    qc.barrier()
-    qc.x(0)
-    qc.barrier()
-    qc.ecr(1, 0)
-    qc.barrier()
-    qc.x(1)
+# Note: Timed keyword is currently a deprecated feature
+# =============================================================================
 
-    expected = {
-        0: {0: "SX", 50: "ECR_0", 320: "X", 370: "ECR_1"},
-        1: {0: "SX", 50: "ECR_1", 370: "ECR_0", 640: "X"},
-    }
-    assert moment_builder.build_moments(qc, timed=True) == expected
+# def test_moment_builder_timed(moment_builder: MomentBuilder):
+#     qc = QuantumCircuit(2)
+#     qc.sx(0)
+#     qc.sx(1)
+#     qc.barrier()
+#     qc.ecr(0, 1)
+#     qc.barrier()
+#     qc.x(0)
+#     qc.barrier()
+#     qc.ecr(1, 0)
+#     qc.barrier()
+#     qc.x(1)
 
-
-def test_equal_to_identity(moment_builder: MomentBuilder):
-    N = 2
-    layers = 1
-
-    qc = QuantumCircuit(N)
-    for _ in range(layers):
-        for q in range(N):
-            qc.x(q)
-            qc.y(q)
-            qc.x(q)
-            qc.y(q)
-
-    expected = {
-        0: {
-            0: "X",
-            50: (3.141592653589793, "X"),
-            100: "X",
-            150: (3.141592653589793, "X"),
-        },
-        1: {
-            0: "X",
-            50: (3.141592653589793, "X"),
-            100: "X",
-            150: (3.141592653589793, "X"),
-        },
-    }
-    assert (
-        moment_builder.build_moments(qc, timed=True, optimization_level=0) == expected
-    )
+#     expected = {
+#         0: {0: "SX", 50: "ECR_0", 320: "X", 370: "ECR_1"},
+#         1: {0: "SX", 50: "ECR_1", 370: "ECR_0", 640: "X"},
+#     }
+#     assert moment_builder.build_moments(qc, timed=True) == expected
 
 
-def test_only_two_qubit(moment_builder: MomentBuilder):
-    qc = QuantumCircuit(4)
-    qc.ecr(0, 1)
-    qc.ecr(3, 2)
+# def test_equal_to_identity(moment_builder: MomentBuilder):
+#     N = 2
+#     layers = 1
 
-    # compiler will fix end-to-end connection
-    expected = {
-        0: {50: "ECR_0"},
-        1: {50: "ECR_1"},
-        2: {
-            0: (-1.5707963267948966, "SX"),
-            50: "ECR_0",
-            320: (1.5707963267948966, "SX"),
-            370: 1.5707963267948966,
-        },
-        3: {
-            0: (1.5707963267948966, "SX"),
-            50: "ECR_1",
-            320: (1.5707963267948966, "SX"),
-            370: 1.5707963267948966,
-        },
-    }
-    assert moment_builder.build_moments(qc, timed=True) == expected
+#     qc = QuantumCircuit(N)
+#     for _ in range(layers):
+#         for q in range(N):
+#             qc.x(q)
+#             qc.y(q)
+#             qc.x(q)
+#             qc.y(q)
 
+#     expected = {
+#         0: {
+#             0: "X",
+#             50: (3.141592653589793, "X"),
+#             100: "X",
+#             150: (3.141592653589793, "X"),
+#         },
+#         1: {
+#             0: "X",
+#             50: (3.141592653589793, "X"),
+#             100: "X",
+#             150: (3.141592653589793, "X"),
+#         },
+#     }
+#     assert (
+#         moment_builder.build_moments(qc, timed=True, optimization_level=0) == expected
+#     )
+
+# def test_only_two_qubit(moment_builder: MomentBuilder):
+#     qc = QuantumCircuit(4)
+#     qc.ecr(0, 1)
+#     qc.ecr(3, 2)
+
+#     # compiler will fix end-to-end connection
+#     expected = {
+#         0: {50: "ECR_0"},
+#         1: {50: "ECR_1"},
+#         2: {
+#             0: (-1.5707963267948966, "SX"),
+#             50: "ECR_0",
+#             320: (1.5707963267948966, "SX"),
+#             370: 1.5707963267948966,
+#         },
+#         3: {
+#             0: (1.5707963267948966, "SX"),
+#             50: "ECR_1",
+#             320: (1.5707963267948966, "SX"),
+#             370: 1.5707963267948966,
+#         },
+#     }
+#     assert moment_builder.build_moments(qc, timed=True) == expected
+
+# =============================================================================
 
 def test_no_transpile(
     moment_builder: MomentBuilder, cyclic_moment_builder: MomentBuilder
@@ -120,7 +146,7 @@ def test_no_transpile(
         registers,
         insert_identities=False,
         includes_coloring=False,
-        barriers=False,
+        insert_barriers=False,
     )
 
     # Check that no modifications occur

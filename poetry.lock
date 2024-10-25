@@ -689,13 +689,13 @@ test = ["flaky", "ipyparallel", "pre-commit", "pytest (>=7.0)", "pytest-asyncio 
 
 [[package]]
 name = "ipython"
-version = "8.28.0"
+version = "8.29.0"
 description = "IPython: Productive Interactive Computing"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "ipython-8.28.0-py3-none-any.whl", hash = "sha256:530ef1e7bb693724d3cdc37287c80b07ad9b25986c007a53aa1857272dac3f35"},
-    {file = "ipython-8.28.0.tar.gz", hash = "sha256:0d0d15ca1e01faeb868ef56bc7ee5a0de5bd66885735682e8a322ae289a13d1a"},
+    {file = "ipython-8.29.0-py3-none-any.whl", hash = "sha256:0188a1bd83267192123ccea7f4a8ed0a78910535dbaa3f37671dca76ebd429c8"},
+    {file = "ipython-8.29.0.tar.gz", hash = "sha256:40b60e15b22591450eef73e40a027cf77bd652e757523eebc5bd7c7c498290eb"},
 ]
 
 [package.dependencies]
@@ -1173,8 +1173,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
-    {version = ">=1.23.3", markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
     {version = ">=1.21.2", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
+    {version = ">=1.23.3", markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
 ]
 
 [package.extras]
@@ -1473,8 +1473,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
-    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
     {version = ">=1.22.4", markers = "python_version < \"3.11\""},
+    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -1667,17 +1667,6 @@ files = [
 [package.extras]
 dev = ["pre-commit", "tox"]
 testing = ["pytest", "pytest-benchmark"]
-
-[[package]]
-name = "ply"
-version = "3.11"
-description = "Python Lex & Yacc"
-optional = false
-python-versions = "*"
-files = [
-    {file = "ply-3.11-py2.py3-none-any.whl", hash = "sha256:096f9b8350b65ebd2fd1346b12452efe5b9607f7482813ffca50c22722a807ce"},
-    {file = "ply-3.11.tar.gz", hash = "sha256:00c7c1aaa88358b9c765b6d3000c6eec0ba42abca5351b095321aef446081da3"},
-]
 
 [[package]]
 name = "prompt-toolkit"
@@ -2097,24 +2086,41 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qiskit"
-version = "0.45.3"
-description = "Software for developing quantum computing programs"
+version = "1.2.4"
+description = "An open-source SDK for working with quantum computers at the level of extended quantum circuits, operators, and primitives."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "qiskit-0.45.3-py3-none-any.whl", hash = "sha256:37ad2b627ca27cc1f8db600e0ca36b4a610a67f68b7fd2a4156477cc643b597d"},
-    {file = "qiskit-0.45.3.tar.gz", hash = "sha256:5ce758114f1025fd7e289eecdef58704faefc57c3b220793b1b49b75db7980ad"},
+    {file = "qiskit-1.2.4-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:1cdabddeed74956ac22db8b11b3479044a305b0895b142198f11a75e745aa079"},
+    {file = "qiskit-1.2.4-cp38-abi3-macosx_10_9_x86_64.whl", hash = "sha256:9daad1c3a0608c4a32a03112d0650cc51ced2cab16479703230acedafafa0548"},
+    {file = "qiskit-1.2.4-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:3394ec724adeb481c02b050ac6e5929ca5e1f91ab94a1d571dadf0c702d6967e"},
+    {file = "qiskit-1.2.4-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:124777b0d9caf40932e02d1d2c6be3a12ff058990e6ae55f45a315a9a51da75b"},
+    {file = "qiskit-1.2.4-cp38-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:2c8d9fa7fdb0cf7727f27a1881cc9f9be7de2b6aaf7cab6861686e1a6e34d6c8"},
+    {file = "qiskit-1.2.4-cp38-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:3a973089d54f379006df8ae9b0d406e909e02b11a9390b3e2f50aefd5e8070eb"},
+    {file = "qiskit-1.2.4-cp38-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:409b43d48e33e5bbc316fd85f44f29a71db2d5ff802affabc5ee355fe9573d7e"},
+    {file = "qiskit-1.2.4-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a66303ab4f939080ca0b8c4102040a89417a99f2621978c7bca8b1d5f6c6e103"},
+    {file = "qiskit-1.2.4-cp38-abi3-win32.whl", hash = "sha256:93aa20398c5ab79adb4baf89a76d034a7c608fcc5bcbbd77355314378583e56a"},
+    {file = "qiskit-1.2.4-cp38-abi3-win_amd64.whl", hash = "sha256:87175e179bbaa3d2e280f14fe90efa77d6d7521d58ee5afd9528ec6716a6d8e6"},
+    {file = "qiskit-1.2.4.tar.gz", hash = "sha256:3f30b1fc6c66dec240428991da75cc6c35cc75152baff8daf3f8ca71b60684e8"},
 ]
 
 [package.dependencies]
-qiskit-terra = "0.45.3"
+dill = ">=0.3"
+numpy = ">=1.17,<3"
+python-dateutil = ">=2.8.0"
+rustworkx = ">=0.15.0"
+scipy = ">=1.5"
+stevedore = ">=3.0.0"
+symengine = ">=0.11,<0.14"
+sympy = ">=1.3"
+typing-extensions = "*"
 
 [package.extras]
-all = ["qiskit-terra[all]"]
-crosstalk-pass = ["qiskit-terra[crosstalk-pass]"]
-csp-layout-pass = ["qiskit-terra[csp-layout-pass]"]
-qasm3-import = ["qiskit-terra[qasm3-import]"]
-visualization = ["qiskit-terra[visualization]"]
+all = ["qiskit[crosstalk-pass,csp-layout-pass,qasm3-import,visualization]"]
+crosstalk-pass = ["z3-solver (>=4.7)"]
+csp-layout-pass = ["python-constraint (>=1.4)"]
+qasm3-import = ["qiskit-qasm3-import (>=0.1.0)"]
+visualization = ["Pillow (>=4.2.1)", "matplotlib (>=3.3)", "pydot", "pylatexenc (>=1.4)", "seaborn (>=0.9.0)"]
 
 [[package]]
 name = "qiskit-aer"
@@ -2250,46 +2256,6 @@ requests-ntlm = ">=1.1.0"
 typing-extensions = ">=4.0.0"
 urllib3 = ">=1.21.1"
 websocket-client = ">=1.0.1"
-
-[[package]]
-name = "qiskit-terra"
-version = "0.45.3"
-description = "Software for developing quantum computing programs"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "qiskit-terra-0.45.3.tar.gz", hash = "sha256:fa3c5d9f54abd5f38fa79c1b1490ff984358377a2d6ed3c17ad2f06fd94243f8"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:8ed12a6a5876cf180576575422d4e21908d647af8ed29d8a188da00e1ee5fe7e"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-macosx_10_9_x86_64.whl", hash = "sha256:8b3c8a4c09549fb26f91b513170df5f5ba931b2e34cf5f9b0a9ba3a419c503ff"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:18bd72613aa61f1e1a5879f0b4eb4f13cf7e06471a4e1004e156ada65b5004aa"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ff897082aaf9fbd0ad323ae3bc0e06f479e87e485954ee65952b095c378591f7"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b4ba1245f103eebcbb9e37955ee67798f7a081c9417132727e34495f671583be"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:4a323fd342afe0d14ba4ec23db2279fa23c93b4570a4bf9f042d5ca792a722b5"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:aa817ec00756fa45cfac82945db43e0882db18bb678f5282481aca13713e3bbd"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3fea3f2deda4a4561f5c20ff914824b09825235e5972508e47bb974f2adf7e14"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-win32.whl", hash = "sha256:4a98f7f614978020512eae946e229769fc038707a98920700ff2dde233b3575f"},
-    {file = "qiskit_terra-0.45.3-cp38-abi3-win_amd64.whl", hash = "sha256:2a127bb6773ced4c0a7d491d5a1dcbe57cc3328b5923f0ef41fa65b904b138b7"},
-]
-
-[package.dependencies]
-dill = ">=0.3"
-numpy = ">=1.17,<2"
-ply = ">=3.10"
-psutil = ">=5"
-python-dateutil = ">=2.8.0"
-rustworkx = ">=0.13.0"
-scipy = ">=1.5"
-stevedore = ">=3.0.0"
-symengine = {version = ">=0.9,<0.10.0 || >0.10.0", markers = "platform_machine == \"x86_64\" or platform_machine == \"aarch64\" or platform_machine == \"ppc64le\" or platform_machine == \"amd64\" or platform_machine == \"arm64\""}
-sympy = ">=1.3"
-typing-extensions = {version = "*", markers = "python_version < \"3.11\""}
-
-[package.extras]
-all = ["ipywidgets (>=7.3.0)", "matplotlib (>=3.3)", "pillow (>=4.2.1)", "pydot", "pygments (>=2.4)", "pylatexenc (>=1.4)", "python-constraint (>=1.4)", "qiskit-qasm3-import (>=0.1.0)", "seaborn (>=0.9.0)", "z3-solver (>=4.7)"]
-crosstalk-pass = ["z3-solver (>=4.7)"]
-csp-layout-pass = ["python-constraint (>=1.4)"]
-qasm3-import = ["qiskit-qasm3-import (>=0.1.0)"]
-visualization = ["ipywidgets (>=7.3.0)", "matplotlib (>=3.3)", "pillow (>=4.2.1)", "pydot", "pygments (>=2.4)", "pylatexenc (>=1.4)", "seaborn (>=0.9.0)"]
 
 [[package]]
 name = "requests"
@@ -2714,9 +2680,9 @@ optional = ["python-socks", "wsaccel"]
 test = ["websockets"]
 
 [extras]
-dev = ["pytest"]
+dev = ["flake8-pyproject", "pytest"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10,<3.13"
-content-hash = "48ae6922998493f5fd9ab5512593754a089d371b4277cd4e9addb7446195a733"
+content-hash = "7f04818dbffe0f097cafd6e98a664332d82ba1abdb622863c2376bcbe43c89ed"

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pulse-simulator"
-version = "0.2.0"
+version = "0.3.0"
 description = ""
 authors = ["Andy Goldschmidt <agoldschmidt11@gmail.com>, Emilio Pelaez <epelaez@uchicago.edu>"]
 readme = "README.md"
@@ -10,7 +10,7 @@ readme = "README.md"
 python = "^3.10,<3.13"
 numpy = "^1.26.2"
 scipy = "^1.11.3"
-qiskit = "^0.45.0"
+qiskit = "^1.0" # "^0.45.0"
 matplotlib = "^3.8.1"
 importlib = "^1.0.4"
 qiskit-dynamics = "^0.4.2"
@@ -20,14 +20,14 @@ sympy = "^1.12"
 qiskit-aer = "^0.13.2"
 tqdm = "^4.66.1"
 jax = {extras = ["cuda12"], version = "^0.4.35"}
+qiskit-experiments = "^0.7.0"
 
 # dev
 pytest = {version="^7.4.4", optional = true}
 flake8-pyproject = {version="^1.2.3", optional = true}
-qiskit-experiments = "^0.7.0"
 
 [tool.poetry.extras]
-dev = ["pytest"]
+dev = ["pytest", "flake8-pyproject"]
 
 [[tool.poetry.source]]
 name = "PyPI"

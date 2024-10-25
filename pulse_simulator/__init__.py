@@ -15,6 +15,8 @@ from .qiskit_simulation_utils import (
     qiskit_ground_state,
     qiskit_identity_operator,
     rz_moment,
+    remove_final_measurement,
+    remove_idle_wires,
 )
 
 from .__version__ import __version__

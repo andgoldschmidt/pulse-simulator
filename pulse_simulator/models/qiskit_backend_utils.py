@@ -13,15 +13,15 @@ from typing import Callable
 
 def draw_t1(rng):
     # units: s (source: FakeManila)
-    mean = 1e-4
-    std = 1e-05
+    mean = 1e-4 * 10
+    std = 1e-05 * 10
     return rng.normal(mean, std)
 
 
 def draw_t2(rng):
     # units: s (source: FakeManila)
-    mean = 5e-5
-    std = 5e-06
+    mean = 5e-5 * 10
+    std = 5e-06 * 10
     return rng.normal(mean, std)
 
 
@@ -40,9 +40,9 @@ def draw_anharmonicity(rng):
 
 
 def draw_coupling(rng):
-    # units: Hz (source: FakeManila)
-    mean = 2 * np.pi * 2e6
-    std = 2 * np.pi * 0.03e6
+    # units: Hz (source: FakeManila / 10)
+    mean = 2 * np.pi * 2e6 / 10 
+    std = 2 * np.pi * 0.03e6 / 10
     return rng.normal(mean, std)
 
 
@@ -276,9 +276,9 @@ def get_drive_channel(i, backend, name=False):
         ch = channels[0]
     
     if name:
-        return channels[0].name
+        return ch.name
     else:
-        return channels[0]
+        return ch
 
 
 def get_phase_channel(i, backend, name=False):
