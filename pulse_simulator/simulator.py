@@ -54,6 +54,7 @@ class Simulator:
         include_dissipation: bool = False,
         verbose: bool = False,
         simulation_vars: Union[dict, None] = None,
+        cross_resonance_model_name: str = "Toy",
         atol=1e-9,
         rtol=1e-9,
         gpu: bool = False,
@@ -84,6 +85,7 @@ class Simulator:
                 self._simulation_vars if simulation_vars is None else simulation_vars
             ),
             "simulation_dt": dt,
+            "cross_resonance_model_name": cross_resonance_model_name,
         }
 
         self._solver = build_solver(

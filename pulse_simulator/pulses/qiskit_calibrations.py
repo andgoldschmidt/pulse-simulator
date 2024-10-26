@@ -93,17 +93,29 @@ def default_single_qubit_gateset(
     keys: list[str],
     duration: int,
     dt: float,
-    sx_angle: float = np.pi / 4,
-    x_angle: float = np.pi / 2,
 ):
     gates = {}
     for k in keys:
         if "SX" in k:
-            gates[k] = gaussian_envelope(duration, dt=dt, angle=sx_angle)
+            gates[k] = np.pi / 4
         elif "X" in k:
-            gates[k] = gaussian_envelope(duration, dt=dt, angle=x_angle)
+            gates[k] = np.pi / 2
         elif "I" in k:
-            gates[k] = zero_envelope(duration)
+            gates[k] = 0.0
         else:
             raise ValueError(f"Unknown gate {k}")
-    return gates
+    return default_gateset(gates, duration, dt)
+
+
+def default_gateset(
+    gates: dict[str, float],
+    duration: int,
+    dt: float,
+):
+    gateset = {}
+    for k, v in gates.items():
+        if np.isclose(v, 0.0):
+            gateset[k] = zero_envelope(duration)
+        else:
+            gateset[k] = gaussian_envelope(duration, dt=dt, angle=v)
+    return gateset

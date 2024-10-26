@@ -10,45 +10,97 @@ PHASE_CHANNEL_INDEX_SHIFT = 1000
 # Types
 from typing import Callable
 
+"""
+The functions in this module are used to extract variables from a Qiskit backend
+and generate simulation variables for the pulse simulator.
 
-def draw_t1(rng):
-    # units: s (source: FakeManila)
-    mean = 1e-4 * 10
-    std = 1e-05 * 10
-    return rng.normal(mean, std)
+The default simulation variables are taken from IBM Brisbane, see:
+https://arxiv.org/abs/2410.00916
 
+The coupling strength is taken from:
+https://doi.org/10.1103/PhysRevA.93.060302
+"""
 
-def draw_t2(rng):
-    # units: s (source: FakeManila)
-    mean = 5e-5 * 10
-    std = 5e-06 * 10
-    return rng.normal(mean, std)
-
-
-def draw_frequency(rng):
-    # units: Hz (source: FakeManila)
-    mean = 2 * np.pi * 5e9
-    std = 2 * np.pi * 0.05e9
-    return rng.normal(mean, std)
-
-
-def draw_anharmonicity(rng):
-    # units: Hz (source: FakeManila)
-    mean = -2 * np.pi * 0.05e9
-    std = 2 * np.pi * 0.0001e9
-    return rng.normal(mean, std)    
+def draw_t1(rng, mean=False, std=False):
+    # units: s
+    mu = 216 * 1e-06
+    sigma = 80 * 1e-06
+    if mean and std:
+        return mu, sigma
+    elif mean:
+        return mu
+    elif std:
+        return sigma
+    else:
+        return rng.normal(mu, sigma)
 
 
-def draw_coupling(rng):
-    # units: Hz (source: FakeManila / 10)
-    mean = 2 * np.pi * 2e6 / 10 
-    std = 2 * np.pi * 0.03e6 / 10
-    return rng.normal(mean, std)
+def draw_t2(rng, mean=False, std=False):
+    # units: s  
+    mu = 154 * 1e-06
+    sigma = 82 * 1e-06
+    if mean and std:
+        return mu, sigma
+    elif mean:
+        return mu
+    elif std:
+        return sigma
+    else:
+        return rng.normal(mu, sigma)
+
+def draw_frequency(rng, mean=False, std=False):
+    # units: Hz  
+    mu = 2 * np.pi * 4.90e9
+    sigma = 2 * np.pi * 0.11e9
+    if mean and std:
+        return mu, sigma
+    elif mean:
+        return mu
+    elif std:
+        return sigma
+    else:
+        return rng.normal(mu, sigma)
 
 
-def draw_rabi(rng):
-    # calibrated to 1.0
-    return 1e9
+def draw_anharmonicity(rng, mean=False, std=False):
+    # units: Hz  
+    mu = -2 * np.pi * 0.31e9
+    sigma = 2 * np.pi * 0.0054e9
+    if mean and std:
+        return mu, sigma
+    elif mean:
+        return mu
+    elif std:
+        return sigma
+    else:
+        return rng.normal(mu, sigma)
+
+def draw_coupling(rng, mean=False, std=False):
+    # units: Hz
+    mu = 2 * np.pi * 3.8 * 1e6
+    sigma = 0.0
+    if mean and std:
+        return mu, sigma
+    elif mean:
+        return mu
+    elif std:
+        return sigma
+    else:
+        return mu
+
+
+def draw_rabi(rng, mean=False, std=False):
+    # calibrated = 1e9
+    mu = 1e9
+    sigma = 0.0
+    if mean and std:
+        return mu, sigma
+    elif mean:
+        return mu
+    elif std:
+        return sigma
+    else:
+        return mu
 
 
 def vars_t1(i):
@@ -76,6 +128,16 @@ def vars_anharmonicity(i):
     return f"delta{i}"
 
 
+def apply_time_units(var, units=1e9):
+    ns = units
+    return var * ns
+
+
+def apply_frequency_units(var, angular=False, units=1e9):
+    GHz = 1 / units
+    return var * GHz if angular else var * GHz / 2 / np.pi
+
+
 def backend_simulation_vars(backend, angular=False, rabi=False, units=1e9):
     """Qiskit versions < 1.0 only.
 
@@ -97,23 +159,17 @@ def backend_simulation_vars(backend, angular=False, rabi=False, units=1e9):
     if Version(qiskit_version) > Version("1.0.0"):
         raise Exception("`backend_simulation_vars` requires Qiskit versions < 1.0.0")
 
-    GHz = 1 / units
-    ns = units
+    ns_fn = lambda x: apply_time_units(x, units=units)
+    GHz_fn = lambda x: apply_frequency_units(x, angular=angular, units=units)
     config = backend.configuration()
     props = backend.properties()
     n = config.n_qubits
-    t1 = {vars_t1(i): props.t1(i) * ns for i in range(n)}
-    t2 = {vars_t2(i): props.t2(i) * ns for i in range(n)}
-    H = {
-        k: v * GHz if angular else v * GHz / 2 / np.pi
-        for k, v in config.hamiltonian["vars"].items()
-    }
+    t1 = {vars_t1(i): ns_fn(props.t1(i)) for i in range(n)}
+    t2 = {vars_t2(i): ns_fn(props.t2(i)) for i in range(n)}
+    H = {k: GHz_fn(v) for k, v in config.hamiltonian["vars"].items()}
     if not rabi:
         for i in range(n):
-            if angular:
-                H[vars_rabi(i)] = 1.0
-            else:
-                H[vars_rabi(i)] = 1 / 2 / np.pi
+            H[vars_rabi(i)] = GHz_fn(units)
     return functools.reduce(lambda a, b: {**a, **b}, [H, t1, t2])
 
 
@@ -165,9 +221,9 @@ def generate_simulation_vars(
     Returns:
         Dict: Variables for pulse simulation.
     """
-    GHz = 1 / units
-    ns = units
-
+    ns_fn = lambda x: apply_time_units(x, units=units)
+    GHz_fn = lambda x: apply_frequency_units(x, angular=angular, units=units)
+    
     # Assert functions are not None
     assert t1_fn is not None
     assert t2_fn is not None
@@ -183,33 +239,20 @@ def generate_simulation_vars(
         rng = np.random.default_rng()
 
     # Qubit frequencies
-    GHz2pi = GHz / 2 / np.pi
-    wq = {
-        vars_frequency(i): w_fn(rng) * GHz if angular else w_fn(rng) * GHz2pi
-        for i in registers
-    }
+    wq = {vars_frequency(i): GHz_fn(w_fn(rng)) for i in registers}
 
     # Anharmonicities
-    deltaq = {
-        vars_anharmonicity(i): alpha_fn(rng) * GHz if angular else alpha_fn(rng) * GHz2pi
-        for i in registers
-    }
+    deltaq = {vars_anharmonicity(i):  GHz_fn(alpha_fn(rng)) for i in registers}
 
     # Coupling strengths
-    jqq = {
-        vars_coupling(i, j): j_fn(rng) * GHz if angular else j_fn(rng) * GHz2pi
-        for i, j in coupling_map
-    }
+    jqq = {vars_coupling(i, j): GHz_fn(j_fn(rng)) for i, j in coupling_map}
 
     # Rabi rates (1.0 => calibration is correct)
-    omegad = {
-        vars_rabi(i): omega_fn(rng) * GHz if angular else omega_fn(rng) * GHz2pi
-        for i in registers
-    }
+    omegad = {vars_rabi(i): GHz_fn(omega_fn(rng)) for i in registers}
 
     # T1 and T2 times
-    t1 = {vars_t1(i): t1_fn(rng) * ns for i in registers}
-    t2 = {vars_t2(i): t2_fn(rng) * ns for i in registers}
+    t1 = {vars_t1(i): ns_fn(t1_fn(rng)) for i in registers}
+    t2 = {vars_t2(i): ns_fn(t2_fn(rng)) for i in registers}
 
     return functools.reduce(lambda a, b: {**a, **b}, [t1, t2, wq, jqq, deltaq, omegad])
 

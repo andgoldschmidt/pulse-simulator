@@ -1,11 +1,16 @@
 from .qiskit_operator_labels import from_label, to_label, zero_operator
 from .qiskit_backend_utils import (
+    draw_anharmonicity,
+    draw_coupling,
+    draw_frequency,
+    draw_rabi,
     get_drive_channel,
     get_control_channel,
     vars_anharmonicity,
     vars_coupling,
     vars_frequency,
     vars_rabi,
+    apply_frequency_units,
 )
 
 import numpy as np
@@ -62,12 +67,65 @@ def crosstalk_model(registers, graph, variables, qiskit_order=True):
     return operator
 
 
+def calibrate_cross_resonance_drive(
+    qubits, variables, model_name="Toy", angle=np.pi / 8
+):
+    i_c, i_t = qubits
+    try:
+        J = 2 * np.pi * variables[vars_coupling(i_c, i_t)]
+        αc = 2 * np.pi * variables[vars_anharmonicity(i_c)]
+        ωc = 2 * np.pi * variables[vars_frequency(i_c)]
+        ωt = 2 * np.pi * variables[vars_frequency(i_t)]
+        Δct = ωc - ωt
+    except Exception as e:
+        print(f"Missing parameter for CR model on {qubits}.")
+        raise e
+
+    if "SWPT" in model_name:
+        zx_coef = J / (Δct + αc) * (αc / Δct)
+    elif "Simple" in model_name:
+        zx_coef = J / Δct
+    elif "Toy" in model_name:
+        zx_coef = 1.0
+    else:
+        raise ValueError(f"Unknown CR gate model with name {model_name}")
+
+    # Return the drive calibration (the area under the pulse)
+    return angle / zx_coef
+
+
+def calibrate_default_cross_resonance_drive(
+    model_name, angle=np.pi / 8
+):  
+    # calibrated values are unitless (and in rad)
+    rng = None
+    J = draw_coupling(rng, mean=True)
+    αc = draw_anharmonicity(rng, mean=True)
+    ωc = draw_frequency(rng, mean=True)
+    ωt = ωc - draw_frequency(rng, std=True)
+    Δct = ωc - ωt
+
+    if "SWPT" in model_name:
+        zx_coef = J / (Δct + αc) * (αc / Δct)
+    elif "Simple" in model_name:
+        zx_coef = J / Δct
+    elif "Toy" in model_name:
+        zx_coef = 1.0
+    else:
+        raise ValueError(f"Unknown CR gate model with name {model_name}")
+
+    # Return the drive calibration (the area under the pulse)
+    return angle / zx_coef
+
+
 def cross_resonance_model(
     qubits,
     registers,
     backend,
     variables,
     model_name="Toy",
+    use_default_device=True,
+    units=1e9,
     return_params=False,
     qiskit_order=True,
 ):
@@ -75,6 +133,10 @@ def cross_resonance_model(
 
     Note: These models keep ZZ coupling separate! Any ZZ coupling should be
     added to the drift Hamiltonian via the crosstalk model.
+
+    Note: The default device parameters enable a single calibrated 2QB gate, instead of
+    using the backend parameters, which would require a separate calibration for each pair
+    of qubits.
 
     Arguments:
         qubits (List[Int]) -- The two qubits, ordered as (control, target).
@@ -101,21 +163,30 @@ def cross_resonance_model(
     ctrl_drive_l = get_drive_channel(i_c, backend, name=True)
 
     # Unpack parameters
-    try:
-        J = 2 * np.pi * variables[vars_coupling(i_c, i_t)]
-        αc = 2 * np.pi * variables[vars_anharmonicity(i_c)]
-        αt = 2 * np.pi * variables[vars_anharmonicity(i_c)]
-        ωc = 2 * np.pi * variables[vars_frequency(i_c)]
-        ωt = 2 * np.pi * variables[vars_frequency(i_t)]
-        rc = 2 * np.pi * variables[vars_rabi(i_c)]
-        rt = 2 * np.pi * variables[vars_rabi(i_t)]
-    except Exception as e:
-        print(f"Missing parameter for CR model on {qubits}.")
-        raise e
-
-    # Modify params
-    Δct = ωc - ωt
-    α = (αc + αt) / 2
+    if use_default_device:
+        rng = None
+        J = draw_coupling(rng, mean=True)
+        αc = draw_anharmonicity(rng, mean=True)
+        Δct = draw_frequency(rng, std=True)
+        rc = apply_frequency_units(draw_rabi(rng, mean=True), angular=True, units=units)
+        rt = apply_frequency_units(draw_rabi(rng, mean=True), angular=True, units=units)
+    else:
+        try:
+            J = 2 * np.pi * variables[vars_coupling(i_c, i_t)]
+            αc = 2 * np.pi * variables[vars_anharmonicity(i_c)]
+            ωc = 2 * np.pi * variables[vars_frequency(i_c)]
+            ωt = 2 * np.pi * variables[vars_frequency(i_t)]
+            rc = 2 * np.pi * variables[vars_rabi(i_c)]
+            rt = 2 * np.pi * variables[vars_rabi(i_t)]
+            Δct = ωc - ωt
+        except Exception as e:
+            print(f"Missing parameter for CR model on {qubits}.")
+            raise e
+        
+    # Unitless coefficients
+    c1 = J / (Δct + αc)
+    c2 = αc / Δct
+    c3 = J / Δct
 
     # Construct operator labels
     ZI_label = to_label({i_c: "Z", i_t: "I"}, registers)
@@ -134,13 +205,13 @@ def cross_resonance_model(
         params = {
             "Model": f"{model_name}",
             "Drift": "0",
-            f"{cr_drive_l}": f"{J / (Δct + α): .2e} * (I_{i_c} X_{i_t} + {(α / Δct): .2e} * Z_{i_c} X_{i_t})",
+            f"{cr_drive_l}": f"{c1: .2e} * (-I_{i_c} X_{i_t} + {c2: .2e} * Z_{i_c} X_{i_t})",
             f"{targ_drive_l}": f"{rt} * X_{i_t}",
             f"{ctrl_drive_l}": f"{rc} * X_{i_c}",
         }
 
         drift_op = Zero
-        cr_drive_op = J / (Δct + α) * (IX + (α / Δct) * ZX)
+        cr_drive_op = c1 * (-IX + c2 * ZX)
         targ_drive_op = rt * IX
         ctrl_drive_op = rc * XI
 
@@ -152,13 +223,13 @@ def cross_resonance_model(
         params = {
             "Model": f"{model_name}",
             "Drift": f"{Δct} * ZI",
-            f"{cr_drive_l}": f"X_{i_c} I_{i_t} + {J / Δct: .2e} * Z_{i_c} X_{i_t}",
+            f"{cr_drive_l}": f"X_{i_c} I_{i_t} + {c3: .2e} * Z_{i_c} X_{i_t}",
             f"{targ_drive_l}": f"{rt: .2e} * X_{i_t}",
             f"{ctrl_drive_l}": f"{rc: .2e} * X_{i_c}",
         }
 
         drift_op = Δct * ZI
-        cr_drive_op = XI + J / Δct * ZX
+        cr_drive_op = XI + c3 * ZX
         ctrl_drive_op = rc * XI
         targ_drive_op = rt * IX
 

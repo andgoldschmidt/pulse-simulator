@@ -31,6 +31,7 @@ def build_model(
     include_crosstalk: bool = False,
     include_dissipation: bool = False,
     verbose: bool = False,
+    cross_resonance_model_name: str = "Toy",
 ) -> dict:
     """
     Build a model for the given Qiskit backend and registers.
@@ -83,7 +84,7 @@ def build_model(
         registers=registers,
         backend=backend,
         variables=simulation_vars,
-        model_name="Toy",
+        model_name=cross_resonance_model_name,
     )
 
     A_decay = functools.partial(
