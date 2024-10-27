@@ -106,12 +106,10 @@ def calibrate_cross_resonance_drive(
     return angle / zx_coef
 
 
-# TODO: This is a very hacky function. Need to replace.
+# TODO: This is a very hacky function default.
 def calibrate_default_cross_resonance_drive(
-    model_name: str, angle=np.pi / 8, units=1e9
+    model_name: str, angle=np.pi / 8, sampler: BackendSampler = BackendSampler(1e9)
 ):
-    sampler = BackendSampler(units)
-
     # returned value will cancel units & 2π's -- conversion is not strictly necessary
     J = sampler.frequency_units(sampler.draw_coupling(mean=True), angular=True)
     αc = sampler.frequency_units(sampler.draw_anharmonicity(mean=True), angular=True)
