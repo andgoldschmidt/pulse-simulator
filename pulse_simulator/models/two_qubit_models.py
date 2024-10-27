@@ -41,6 +41,7 @@ def zz_coupling(edge, variables):
         raise e
 
     Δ12 = ω1 - ω2
+    # Carries units of frequency
     return 2 * α * J12**2 / (Δ12**2 - α**2)
 
 

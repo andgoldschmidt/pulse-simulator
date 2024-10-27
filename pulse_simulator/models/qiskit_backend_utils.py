@@ -17,8 +17,10 @@ and generate simulation variables for the pulse simulator.
 The default simulation variables are taken from IBM Brisbane, see:
 https://arxiv.org/abs/2410.00916
 
-The coupling strength is taken from:
+The coupling strength could be taken from:
 https://doi.org/10.1103/PhysRevA.93.060302
+...but this turned out to be too strong. The observed coupling strength from XY4 experiments
+was used instead.
 """
 
 def draw_t1(rng, mean=False, std=False):
@@ -77,7 +79,8 @@ def draw_anharmonicity(rng, mean=False, std=False):
 
 def draw_coupling(rng, mean=False, std=False):
     # units: Hz
-    mu = 2 * np.pi * 3.8 * 1e6
+    # mu = 2 * np.pi * 3.8e6 
+    mu = 2 * np.pi * 1.66e6
     sigma = 0.0
     if mean and std:
         return mu, sigma
