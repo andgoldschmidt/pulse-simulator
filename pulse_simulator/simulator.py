@@ -1,6 +1,6 @@
 # Packages
 from .pulses import build_pulse_schedule, get_moment_case, build_circuit
-from .models import build_solver, get_backend_edges, generate_default_simulation_vars
+from .models import build_solver, get_backend_edges, BackendSampler
 from .compiler import MomentBuilder
 from .qiskit_simulation_utils import qiskit_identity_operator
 
@@ -20,6 +20,7 @@ class Simulator:
         self,
         registers: list[int],
         backend: Backend,
+        units: float = 1e9,
     ):
         """Creates a `Simulator` instance."""
         self._registers = registers
@@ -33,12 +34,19 @@ class Simulator:
         # build moment builder
         self._moment_builder = MomentBuilder(self._registers, self._coupling_map)
 
-        # default solver variables (NOTE: V1.0)
-        self._simulation_vars = generate_default_simulation_vars(
+        # default solver variables (NOTE: Qiskit V1.0)
+        self._simulation_units = units
+        self._backend_sampler = BackendSampler(self._simulation_units, seed=17)
+        self._simulation_vars = self._backend_sampler.generate_simulation_vars(
             self._registers, self._coupling_map
         )
+
         # Filled by `simulate_circuit`
-        self._solver_kwargs = {}
+        # NOTE: If the BackendSampler is included here, it will be used to generate
+        #       the simulation variables from mean values instead of samples.
+        self._solver_kwargs = {
+            "backend_sampler": self._backend_sampler,
+        }
 
         # top level fields to populate
         self._unique_schedules_by_case: dict[str, ScheduleBlock] = {}
@@ -77,16 +85,14 @@ class Simulator:
         Returns:
             list[Operator]: the circuit operator after each moment
         """
-        # build solver
-        self._solver_kwargs = {
-            "include_crosstalk": include_crosstalk,
-            "include_dissipation": include_dissipation,
-            "simulation_vars": (
-                self._simulation_vars if simulation_vars is None else simulation_vars
-            ),
-            "simulation_dt": dt,
-            "cross_resonance_model_name": cross_resonance_model_name,
-        }
+        # build solver (add args)
+        self._solver_kwargs["include_crosstalk"] = include_crosstalk
+        self._solver_kwargs["include_dissipation"] = include_dissipation
+        self._solver_kwargs["simulation_vars"] = (
+            self._simulation_vars if simulation_vars is None else simulation_vars
+        )
+        self._solver_kwargs["simulation_dt"] = dt
+        self._solver_kwargs["cross_resonance_model_name"] = cross_resonance_model_name
 
         self._solver = build_solver(
             self._registers, self._backend, **self._solver_kwargs

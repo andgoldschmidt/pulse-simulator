@@ -6,6 +6,7 @@ from typing import Union
 from .qiskit_backend_utils import get_backend_edges
 from .one_qubit_models import rx_model, rz_model, qubit_decay_model
 from .two_qubit_models import cross_resonance_model, crosstalk_model
+from .qiskit_backend_utils import BackendSampler
 
 # Typing
 from qiskit.providers import Backend
@@ -31,6 +32,7 @@ def build_model(
     include_crosstalk: bool = False,
     include_dissipation: bool = False,
     verbose: bool = False,
+    backend_sampler: Union[None, BackendSampler] = None,
     cross_resonance_model_name: str = "Toy",
 ) -> dict:
     """
@@ -85,6 +87,7 @@ def build_model(
         backend=backend,
         variables=simulation_vars,
         model_name=cross_resonance_model_name,
+        sampler=backend_sampler,
     )
 
     A_decay = functools.partial(
@@ -126,7 +129,9 @@ def build_model(
         print(f"\tEdges: {added_edges}")
 
     # Crosstalk
-    H_xtalk = crosstalk_model(registers, undir_edges, simulation_vars)
+    H_xtalk = crosstalk_model(
+        registers, undir_edges, simulation_vars, sampler=backend_sampler
+    )
 
     # Control channels
     # =====

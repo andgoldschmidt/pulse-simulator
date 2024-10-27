@@ -74,6 +74,9 @@ def qubit_decay_model(qubit, registers, variables, qiskit_order=True):
             t2_eff = 1 / (1 / t2 - 1 / 2 / t1)
         else:
             t2_eff = t2
+
+        if t2_eff < 0.0:
+            warnings.warn(f"Bad 2*t1<t2 occurred, t2_eff={t2_eff}.")
         static_op += [
             1
             / np.sqrt(2 * t2_eff)
