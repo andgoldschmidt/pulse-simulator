@@ -67,16 +67,27 @@ def calibrate_gateset(
             # NOTE: Real-valued signals only
             samples = get_samples(stored_envs[i]).real
             amp = get_amplitude_for_rotation(angles[i], samples, dt)
-            message = f"Adjusting {names[i]} by amplitude{amp: 0.2f} for angle{angles[i]/np.pi: 0.2f}π"
+            message = (
+                f"Adjusting {names[i]} by amplitude {amp: 0.2f}"
+                + f" for rotation angle {angles[i]/np.pi: 0.2f}π"
+            )
         except ValueError:
             # Catch failed amplitude calculation
             amp = angles[i]
-            message = f"Zero area signal. Adjusting {names[i]} by amplitude{amp: 0.2f} (using provided angle)."
+            message = (
+                f"Zero area signal. Adjusting {names[i]} by amplitude {amp: 0.2f}"
+                + " (using provided rotation angle)."
+            )
 
         if verbose:
             print(message)
 
         # Apply to gate
+        if verbose:
+            if type(duration) != int:
+                print(f"Duration is not an integer: {duration}, converting.")
+                duration = int(duration)
+
         calibrated_gateset[names[i]] = pulse.ScalableSymbolicPulse(
             pulse_type=names[i],
             duration=duration,

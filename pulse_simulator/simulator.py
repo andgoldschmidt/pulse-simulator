@@ -66,6 +66,7 @@ class Simulator:
         atol=1e-9,
         rtol=1e-9,
         gpu: bool = False,
+        rotary_gates: Union[dict[str, ScalableSymbolicPulse], None] = None,
     ) -> list[Operator]:
         """Simulate the moments of a circuit.
 
@@ -136,6 +137,7 @@ class Simulator:
                 dt=dt,
                 insert_identities=True,
                 verbose=verbose,
+                rotary_gates=rotary_gates,
             )
             case = get_moment_case(moment)
             self._unique_schedules_by_case[case].append(schedule)
