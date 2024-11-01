@@ -60,6 +60,7 @@ class Simulator:
         dt: float,
         include_crosstalk: bool = False,
         include_dissipation: bool = False,
+        insert_identities: bool = True,
         verbose: bool = False,
         simulation_vars: Union[dict, None] = None,
         cross_resonance_model_name: str = "Toy",
@@ -135,7 +136,7 @@ class Simulator:
                 backend=self._backend,
                 name=f"unique-moment-{unique_moments.index(moment)}",
                 dt=dt,
-                insert_identities=True,
+                insert_identities=insert_identities,
                 verbose=verbose,
                 rotary_gates=rotary_gates,
             )

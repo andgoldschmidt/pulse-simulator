@@ -530,7 +530,7 @@ def play_ecr_moment(
     dt=1.0,
     verbose=False,
     rotary_gates=None,
-    insert_dynamical_decoupling=True
+    insert_dynamical_decoupling=False
 ):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
