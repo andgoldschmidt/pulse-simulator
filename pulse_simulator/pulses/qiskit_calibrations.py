@@ -38,7 +38,25 @@ def calibrate_gateset(
     samples: Union[int, None] = None,
     verbose: bool = True,
 ) -> dict:
-    """Calibrate a gateset of pulses."""
+    """Calibrate a gateset of pulses.
+    
+    Args:
+
+    gateset (list[np.ndarray]): List of gates to calibrate.
+    names (list[str]): List of gate names.
+    angles (list[float]): List of rotation angles.
+    duration (int): Duration of the pulses.
+    dt (float): Time step.
+    samples (int, optional): Number of samples to store in the spline fit. 
+        Defaults to None, which uses the number of samples in the provided gateset.
+    verbose (bool, optional): Print messages. Defaults to True.
+
+    Returns:
+    dict: Calibrated gateset.
+
+
+    
+    """
     assert len(angles) == len(gateset), "Number of angles must match number of gates."
     assert len(names) == len(gateset), "Number of names must match number of gates."
 
