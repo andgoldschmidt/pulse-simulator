@@ -94,8 +94,6 @@ def build_model(
         qubit_decay_model, registers=registers, variables=simulation_vars
     )
 
-    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
-
     # Create a system model
     # =====
     # Single qubit terms
@@ -114,21 +112,21 @@ def build_model(
         Hs_channels += Hjs_channel + [Hj_phase_ch]
         As_static += Ajs_static
 
-    # Two qubit terms
+    # Two qubit terms (get both directions)
+    dir_edges = get_backend_edges(backend, registers=registers, directed=True)
     added_edges = []
-    for control, target in undir_edges:
-        # Get both directions
-        if control in registers and target in registers:
-            added_edges.append((control, target))
-            for pair in [(control, target), (target, control)]:
-                Hj_drift, Hjs_control, Hjs_channel = H_cr(pair)
-                H_drift += Hj_drift
-                Hs_control += Hjs_control
-                Hs_channels += Hjs_channel
+    for control, target in dir_edges:
+        added_edges.append((control, target))
+        for pair in [(control, target), (target, control)]:
+            Hj_drift, Hjs_control, Hjs_channel = H_cr(pair)
+            H_drift += Hj_drift
+            Hs_control += Hjs_control
+            Hs_channels += Hjs_channel
     if verbose:
         print(f"\tEdges: {added_edges}")
 
     # Crosstalk
+    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
     H_xtalk = crosstalk_model(
         registers, undir_edges, simulation_vars, sampler=backend_sampler
     )

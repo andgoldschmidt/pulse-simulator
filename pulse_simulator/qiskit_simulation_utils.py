@@ -5,6 +5,7 @@ from qiskit.converters import circuit_to_dag, dag_to_circuit
 from collections import OrderedDict
 from qiskit.transpiler.passes import RemoveFinalMeasurements
 from qiskit.transpiler import PassManager
+from typing import Union
 
 
 def rz_moment(virtual_zs, registers):
@@ -44,12 +45,16 @@ def qiskit_identity_operator(n_qubits, open=False):
 
 
 def operator_fidelity(
-    a: quantum_info.Operator,
-    b: quantum_info.Operator
+    a: Union[np.ndarray, quantum_info.Operator],
+    b: Union[np.ndarray, quantum_info.Operator]
 ) -> float:
-    a2 = np.trace(a.data.conj().T @ a.data)
-    b2 = np.trace(b.data.conj().T @ b.data)
-    a_b = np.trace(a.data.conj().T @ b.data)
+    if isinstance(a, quantum_info.Operator):
+        a = a.data
+    if isinstance(b, quantum_info.Operator):
+        b = b.data
+    a2 = np.trace(a.conj().T @ a)
+    b2 = np.trace(b.conj().T @ b)
+    a_b = np.trace(a.conj().T @ b)
     return np.abs(a_b / np.sqrt(a2 * b2))**2
 
 
