@@ -12,6 +12,10 @@ from .qiskit_shapes import (
 )
 
 
+def seconds_to_samples(gate_time, dt):
+    return int(gate_time / dt)
+
+
 def get_closest_multiple_of(value, base_number):
     return int(value + base_number / 2) - (int(value + base_number / 2) % base_number)
 
@@ -20,13 +24,9 @@ def get_closest_multiple_of_16(num, granularity=16):
     return get_closest_multiple_of(num, granularity)
 
 
-def qiskit_closest_multiple_of_16(gate_time_si_units, backend):
+def qiskit_closest_multiple_of_16(desired_samples_dt):
     # https://qiskit.org/textbook/ch-quantum-hardware/calibrating-qubits-pulse.html
-    with pulse.build(name="seconds_to_samples", backend=backend) as _:
-        samples = get_closest_multiple_of_16(
-            pulse.seconds_to_samples(gate_time_si_units)
-        )
-    return samples
+    return get_closest_multiple_of_16(desired_samples_dt)
 
 
 def calibrate_gateset(

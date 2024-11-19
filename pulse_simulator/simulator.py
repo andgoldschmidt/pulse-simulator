@@ -14,6 +14,9 @@ from qiskit.pulse.schedule import ScheduleBlock
 
 from .pulse_simulator_types import CIRCUIT_MOMENT, CIRCUIT_MOMENT_NAMES
 
+import jax
+import numpy as np
+
 
 class Simulator:
     def __init__(
@@ -70,7 +73,7 @@ class Simulator:
         rotary_gates: Union[dict[str, ScalableSymbolicPulse], None] = None,
         virtual_cases: list[str] = ["phase"],
         return_operators: bool = False,
-    ) -> list[Operator]:
+    ) -> Union[Operator, SuperOp]:
         """Simulate the moments of a circuit.
 
         Args:
@@ -87,7 +90,7 @@ class Simulator:
             gpu (bool): whether to use GPU acceleration
 
         Returns:
-            list[Operator]: the circuit operator after each moment
+            Union[Operator, SuperOp]: the circuit operator after each moment
         """
         # build solver (add args)
         self._solver_kwargs["include_crosstalk"] = include_crosstalk
@@ -197,23 +200,50 @@ class Simulator:
                         )
 
         # multiply results in order
-        res: list[Operator] = [None] * (len(self._moments) + 1)
-        res[0] = Operator(QuantumCircuit(len(self._registers)))
-        if return_operators:
-            ops = [res[0]]
-        else:
-            ops = None
-        for i, index in enumerate(self._moment_to_unique_moment_index):
-            case, case_index = unique_moment_index_to_case_index[index]
-            superop_or_op = self._unique_results_dict[case][case_index]
-            res[i + 1] = superop_or_op @ res[i]
-            if return_operators:
-                ops.append(superop_or_op)
+        # if gpu:
+        #     op_init = jax.numpy.array(
+        #         qiskit_identity_operator(len(self._registers), open=self._open_solver).data
+        #     )
+        #     final, res = jax.lax.scan(self._scan_fn, op_init, jax.numpy.stack(ops))
+        #     res = jax.numpy.vstack([res, final[None, :, :]])
+        #     res = [SuperOp(np.array(r)) if self._open_solver else Operator(np.array(r)) 
+        #            for r in res]
+        # else:
 
-        if ops is None:
-            return res
-        else:
+        res: list[Union[Operator, SuperOp]] = [None] * (len(self._moments) + 1)
+        res[0] = qiskit_identity_operator(len(self._registers))
+        for i, index in enumerate(self._moment_to_unique_moment_index):
+            op_or_superop = self._get_op_or_superop(
+                index, unique_moment_index_to_case_index, gpu=False
+            )
+            res[i + 1] = op_or_superop @ res[i]
+
+        if return_operators:
+            # instantiate the operator list
+            ops = [
+                self._get_op_or_superop(index, unique_moment_index_to_case_index, gpu=gpu)
+                for index in self._moment_to_unique_moment_index
+            ]
             return res, ops
+        else:
+            return res
+
+    def _scan_fn(self, carry, x):
+        y = x @ carry
+        # carry, save
+        return y, x
+
+    def _get_op_or_superop(
+        self, 
+        index: int,
+        unique_moment_index_to_case_index: list[list[str, int]],
+        gpu=False
+    ) -> Union[Operator, SuperOp]:
+        case, case_index = unique_moment_index_to_case_index[index]
+        if gpu:
+            return self._unique_results_dict[case][case_index].data
+        else:
+            return self._unique_results_dict[case][case_index]
 
     def get_moments(self) -> list[CIRCUIT_MOMENT]:
         return self._moments
