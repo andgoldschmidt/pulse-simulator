@@ -1,6 +1,6 @@
 # Packages
-from .pulses import build_pulse_schedule, get_moment_case, build_circuit
-from .models import build_solver, get_backend_edges, generate_default_simulation_vars
+from .pulses import build_pulse_schedule, get_moment_case, build_circuit, build_operator
+from .models import build_solver, get_backend_edges, BackendSampler
 from .compiler import MomentBuilder
 from .qiskit_simulation_utils import qiskit_identity_operator
 
@@ -8,7 +8,7 @@ from .qiskit_simulation_utils import qiskit_identity_operator
 from typing import Union
 from qiskit.providers import Backend
 from qiskit import QuantumCircuit
-from qiskit.quantum_info import Operator
+from qiskit.quantum_info import Operator, SuperOp
 from qiskit.pulse.library.symbolic_pulses import ScalableSymbolicPulse
 from qiskit.pulse.schedule import ScheduleBlock
 
@@ -20,6 +20,7 @@ class Simulator:
         self,
         registers: list[int],
         backend: Backend,
+        units: float = 1e9,
     ):
         """Creates a `Simulator` instance."""
         self._registers = registers
@@ -33,12 +34,19 @@ class Simulator:
         # build moment builder
         self._moment_builder = MomentBuilder(self._registers, self._coupling_map)
 
-        # default solver variables (NOTE: V1.0)
-        self._simulation_vars = generate_default_simulation_vars(
+        # default solver variables (NOTE: Qiskit V1.0)
+        self._simulation_units = units
+        self._backend_sampler = BackendSampler(self._simulation_units, seed=17)
+        self._simulation_vars = self._backend_sampler.generate_simulation_vars(
             self._registers, self._coupling_map
         )
+
         # Filled by `simulate_circuit`
-        self._solver_kwargs = {}
+        # NOTE: If the BackendSampler is included here, it will be used to generate
+        #       the simulation variables from mean values instead of samples.
+        self._solver_kwargs = {
+            "backend_sampler": self._backend_sampler,
+        }
 
         # top level fields to populate
         self._unique_schedules_by_case: dict[str, ScheduleBlock] = {}
@@ -52,11 +60,15 @@ class Simulator:
         dt: float,
         include_crosstalk: bool = False,
         include_dissipation: bool = False,
+        insert_identities: bool = True,
         verbose: bool = False,
         simulation_vars: Union[dict, None] = None,
+        cross_resonance_model_name: str = "Toy",
         atol=1e-9,
         rtol=1e-9,
         gpu: bool = False,
+        rotary_gates: Union[dict[str, ScalableSymbolicPulse], None] = None,
+        virtual_cases: list[str] = ["phase"],
     ) -> list[Operator]:
         """Simulate the moments of a circuit.
 
@@ -76,15 +88,14 @@ class Simulator:
         Returns:
             list[Operator]: the circuit operator after each moment
         """
-        # build solver
-        self._solver_kwargs = {
-            "include_crosstalk": include_crosstalk,
-            "include_dissipation": include_dissipation,
-            "simulation_vars": (
-                self._simulation_vars if simulation_vars is None else simulation_vars
-            ),
-            "simulation_dt": dt,
-        }
+        # build solver (add args)
+        self._solver_kwargs["include_crosstalk"] = include_crosstalk
+        self._solver_kwargs["include_dissipation"] = include_dissipation
+        self._solver_kwargs["simulation_vars"] = (
+            self._simulation_vars if simulation_vars is None else simulation_vars
+        )
+        self._solver_kwargs["simulation_dt"] = dt
+        self._solver_kwargs["cross_resonance_model_name"] = cross_resonance_model_name
 
         self._solver = build_solver(
             self._registers, self._backend, **self._solver_kwargs
@@ -98,24 +109,37 @@ class Simulator:
         else:
             self._solver.model.evaluation_mode = sparse_or_dense
 
+        if gpu:
+            method = {"method": "jax_expm", "max_dt": dt}
+            # Also consider: jax_RK4_parallel
+        else:
+            method = {
+                "atol": atol,
+                "rtol": rtol,
+                "method": "jax_odeint",
+            }
+
         # set circuit moments
         self._moments = self.build_moments(circuit)
 
         # get unique moments
         unique_moments: list[CIRCUIT_MOMENT] = []
         unique_frozen_moments: list[frozenset] = []
-        moment_to_unique_moment_index: list[int] = []
+        self._moment_to_unique_moment_index: list[int] = []
         for m in self._moments:
             frozen_m = frozenset(m.items())
             if frozen_m not in unique_frozen_moments:
                 unique_moments.append(m)
                 unique_frozen_moments.append(frozen_m)
             # store how to find each moment
-            moment_to_unique_moment_index.append(unique_frozen_moments.index(frozen_m))
+            self._moment_to_unique_moment_index.append(
+                unique_frozen_moments.index(frozen_m)
+            )
 
         # build unique schedules
         # group by case to match simulation duration
         self._unique_schedules_by_case = {case: [] for case in CIRCUIT_MOMENT_NAMES}
+        self._unique_moment_by_case = {case: [] for case in CIRCUIT_MOMENT_NAMES}
         unique_moment_index_to_case_index: list[list[str, int]] = []
         for moment in unique_moments:
             schedule = build_pulse_schedule(
@@ -126,11 +150,13 @@ class Simulator:
                 backend=self._backend,
                 name=f"unique-moment-{unique_moments.index(moment)}",
                 dt=dt,
-                insert_identities=True,
+                insert_identities=insert_identities,
                 verbose=verbose,
+                rotary_gates=rotary_gates,
             )
             case = get_moment_case(moment)
             self._unique_schedules_by_case[case].append(schedule)
+            self._unique_moment_by_case[case].append(moment)
             # store how to find each unique schedule
             unique_moment_index_to_case_index.append(
                 [case, len(self._unique_schedules_by_case[case]) - 1]
@@ -138,9 +164,9 @@ class Simulator:
 
         # simulate each case
         y0 = qiskit_identity_operator(len(self._registers), open=self._open_solver)
-        unique_results_dict = {}
+        self._unique_results_dict = {}
         for case, schedules in self._unique_schedules_by_case.items():
-            if len(schedules) == 0:
+            if len(schedules) == 0 or case in virtual_cases:
                 continue
             else:
                 final_time = schedules[0].duration * dt
@@ -149,20 +175,33 @@ class Simulator:
                     t_eval=[final_time],
                     y0=y0,
                     signals=schedules,
-                    atol=atol,
-                    rtol=rtol,
-                    method="jax_odeint",
+                    **method,
                 )
-                unique_results_dict[case] = [r.y[-1] for r in results]
+                self._unique_results_dict[case] = [r.y[-1] for r in results]
+
+        # simulate any virtual cases
+        for case, moments in self._unique_moment_by_case.items():
+            if len(moments) == 0 or case not in virtual_cases:
+                continue
+            else:
+                self._unique_results_dict[case] = []
+                for m in moments:
+                    if self._open_solver:
+                        self._unique_results_dict[case].append(
+                            SuperOp(build_operator([m], self._registers))
+                        )
+                    else:
+                        self._unique_results_dict[case].append(
+                            build_operator([m], self._registers)
+                        )
 
         # multiply results in order
         out: list[Operator] = [None] * (len(self._moments) + 1)
         out[0] = Operator(QuantumCircuit(len(self._registers)))
-        for i, index in enumerate(moment_to_unique_moment_index):
+        for i, index in enumerate(self._moment_to_unique_moment_index):
             case, case_index = unique_moment_index_to_case_index[index]
-            results = unique_results_dict[case]
-            yf = results[case_index]
-            out[i + 1] = yf @ out[i]
+            superop_or_op = self._unique_results_dict[case][case_index]
+            out[i + 1] = superop_or_op @ out[i]
 
         return out
 

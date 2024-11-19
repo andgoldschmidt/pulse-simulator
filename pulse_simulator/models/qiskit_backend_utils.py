@@ -11,46 +11,6 @@ PHASE_CHANNEL_INDEX_SHIFT = 1000
 from typing import Callable
 
 
-def draw_t1(rng):
-    # units: s (source: FakeManila)
-    mean = 1e-4 * 10
-    std = 1e-05 * 10
-    return rng.normal(mean, std)
-
-
-def draw_t2(rng):
-    # units: s (source: FakeManila)
-    mean = 5e-5 * 10
-    std = 5e-06 * 10
-    return rng.normal(mean, std)
-
-
-def draw_frequency(rng):
-    # units: Hz (source: FakeManila)
-    mean = 2 * np.pi * 5e9
-    std = 2 * np.pi * 0.05e9
-    return rng.normal(mean, std)
-
-
-def draw_anharmonicity(rng):
-    # units: Hz (source: FakeManila)
-    mean = -2 * np.pi * 0.05e9
-    std = 2 * np.pi * 0.0001e9
-    return rng.normal(mean, std)    
-
-
-def draw_coupling(rng):
-    # units: Hz (source: FakeManila / 10)
-    mean = 2 * np.pi * 2e6 / 10 
-    std = 2 * np.pi * 0.03e6 / 10
-    return rng.normal(mean, std)
-
-
-def draw_rabi(rng):
-    # calibrated to 1.0
-    return 1e9
-
-
 def vars_t1(i):
     return f"t1q{i}"
 
@@ -76,10 +36,158 @@ def vars_anharmonicity(i):
     return f"delta{i}"
 
 
+class BackendSampler:
+    """
+    This class generates simulation variables for the pulse simulator.
+
+    The default simulation variables are taken from IBM Brisbane, see:
+    https://arxiv.org/abs/2410.00916
+
+    The coupling strength could be taken from:
+    https://doi.org/10.1103/PhysRevA.93.060302
+    ...but this turned out to be too strong.
+    An observed coupling strength from XY4 experiments was used instead.
+
+    For T1 and T2, we want good qubits, so drop the deviation by a factor of 10.
+
+    A calibrated Rabi uses the units as the value (e.g. 1e9).
+
+    Note that models may rely on default values for all qubits because constructing
+    a device with good frequency layouts (bounded 1/Δω) cannot be done randomly.
+    """
+
+    def __init__(self, simulation_units, seed=None):
+        self.units = simulation_units
+        self.rng = np.random.default_rng(seed)
+
+        # Default parameters for IBM Brisbane (SI units)
+        self.params = {
+            "t1": {"mean": 216 * 1e-06, "std": 80 * 1e-06 / 10},
+            "t2": {"mean": 154 * 1e-06, "std": 82 * 1e-06 / 10},
+            "frequency": {"mean": 2 * np.pi * 4.90e9, "std": 2 * np.pi * 0.11e9},
+            "anharmonicity": {"mean": -2 * np.pi * 0.31e9, "std": 2 * np.pi * 0.0054e9},
+            "coupling": {"mean": 2 * np.pi * 1.66e6, "std": 0.0},
+            "rabi": {"mean": 1e9, "std": 0.0},
+        }
+
+    def draw(self, key, mean=False, std=False):
+        if key not in self.params:
+            raise ValueError(f"Key {key} not found in the parameters.")
+
+        mu = self.params[key]["mean"]
+        sigma = self.params[key]["std"]
+
+        if mean and std:
+            return mu, sigma
+        elif mean:
+            return mu
+        elif std:
+            return sigma
+        else:
+            if np.isclose(sigma, 0.0):
+                return mu
+            else:
+                return self.rng.normal(mu, sigma)
+
+    def draw_t1(self, mean=False, std=False):
+        return self.draw("t1", mean=mean, std=std)
+
+    def draw_t2(self, t1=0.0, mean=False, std=False):
+        t2 = self.draw("t2", mean=mean, std=std)
+        if 2 * t1 <= t2 or t2 <= 0:
+            raise ValueError(f"Bad draw. Require: 0<2*t1<t2, got t1={t1}, t2={t2}")
+        return t2
+
+    def draw_frequency(self, mean=False, std=False):
+        return self.draw("frequency", mean=mean, std=std)
+
+    def draw_anharmonicity(self, mean=False, std=False):
+        return self.draw("anharmonicity", mean=mean, std=std)
+
+    def draw_coupling(self, mean=False, std=False):
+        return self.draw("coupling", mean=mean, std=std)
+
+    def draw_rabi(self, mean=False, std=False):
+        return self.draw("rabi", mean=mean, std=std)
+
+    def time_units(self, var):
+        # Convert to the simulation units (e.g. ns)
+        ns = self.units
+        return var * ns
+
+    def frequency_units(self, var, angular=False):
+        # Convert to the simulation units (e.g. GHz)
+        GHz = 1 / self.units
+        return var * GHz if angular else var * GHz / 2 / np.pi
+
+    def generate_simulation_vars(
+        self,
+        registers: list[int],
+        coupling_map: list[list[int]],
+        angular: bool = False,
+    ):
+        """
+        This function creates the necessary variables for the pulse simulation. The
+        required variables are:
+
+        - wqi: Frequency of the qubit i.
+        - jqiqj: Coupling strength between qubits i and j.
+        - omegadi: Rabi rate for the qubit i.
+        - alphaqi: Anharmonicity of the qubit i.
+        - t1qi: T1 time of the qubit i.
+        - t2qi: T2 time of the qubit i.
+
+        See the `draw_` functions for the default values.
+
+        NOTE: It's possible that to do this correctly (i.e. with a good frequency layout
+        and appropriate correlation among t1 and t2), we would want to have the random
+        samples depend on the qubit index. This is not done here, but it's a possibility.
+
+        Args:
+            registers (list[int]): List of qubits.
+            coupling_map (list[list[int]]): List of qubit pairs.
+            angular (bool, optional): If False, returns parameters in frequency ω,
+                used as `2πω GHz`. If True, returns parameters in angular
+                frequency, f GHz, used as `f GHz`. Defaults to False (check models).
+        Returns:
+            Dict: Variables for pulse simulation.
+        """
+        time = lambda x: self.time_units(x)
+        freq = lambda x: self.frequency_units(x, angular=angular)
+
+        # Qubit frequencies
+        wq = {vars_frequency(i): freq(self.draw_frequency()) for i in registers}
+
+        # Anharmonicities
+        deltaq = {
+            vars_anharmonicity(i): freq(self.draw_anharmonicity()) for i in registers
+        }
+
+        # Coupling strengths
+        jqq = {vars_coupling(i, j): freq(self.draw_coupling()) for i, j in coupling_map}
+
+        # Rabi rates (1.0 => calibration is correct)
+        omegad = {vars_rabi(i): freq(self.draw_rabi()) for i in registers}
+
+        # T1 and T2 times (correlated)
+        t1 = {}
+        t2 = {}
+        for i in registers:
+            t1_val = self.draw_t1()
+            t2_val = self.draw_t2(t1=t1_val)
+            t1[vars_t1(i)] = time(t1_val)
+            t2[vars_t2(i)] = time(t2_val)
+
+        return functools.reduce(
+            lambda a, b: {**a, **b}, [t1, t2, wq, jqq, deltaq, omegad]
+        )
+
+
 def backend_simulation_vars(backend, angular=False, rabi=False, units=1e9):
+
     """Qiskit versions < 1.0 only.
 
-    Extract variables for the pulse simulation from the backend.
+    Extract variables for the pulse simulation from the fake backend.
 
     Args:
         backend (qk.providers.fake_provider.FakePulseBackend): Backend
@@ -97,143 +205,18 @@ def backend_simulation_vars(backend, angular=False, rabi=False, units=1e9):
     if Version(qiskit_version) > Version("1.0.0"):
         raise Exception("`backend_simulation_vars` requires Qiskit versions < 1.0.0")
 
-    GHz = 1 / units
-    ns = units
+    ns_fn = lambda x: x * units
+    GHz_fn = lambda x: x / units if angular else x / units / 2 / np.pi
     config = backend.configuration()
     props = backend.properties()
     n = config.n_qubits
-    t1 = {vars_t1(i): props.t1(i) * ns for i in range(n)}
-    t2 = {vars_t2(i): props.t2(i) * ns for i in range(n)}
-    H = {
-        k: v * GHz if angular else v * GHz / 2 / np.pi
-        for k, v in config.hamiltonian["vars"].items()
-    }
+    t1 = {vars_t1(i): ns_fn(props.t1(i)) for i in range(n)}
+    t2 = {vars_t2(i): ns_fn(props.t2(i)) for i in range(n)}
+    H = {k: GHz_fn(v) for k, v in config.hamiltonian["vars"].items()}
     if not rabi:
         for i in range(n):
-            if angular:
-                H[vars_rabi(i)] = 1.0
-            else:
-                H[vars_rabi(i)] = 1 / 2 / np.pi
+            H[vars_rabi(i)] = GHz_fn(units)
     return functools.reduce(lambda a, b: {**a, **b}, [H, t1, t2])
-
-
-
-def generate_simulation_vars(
-    registers: list[int],
-    coupling_map: list[list[int]],
-    t1_fn: Callable = draw_t1,
-    t2_fn: Callable = draw_t2,
-    w_fn: Callable = draw_frequency,
-    j_fn: Callable = draw_coupling,
-    omega_fn: Callable = draw_rabi,
-    alpha_fn: Callable = draw_anharmonicity,
-    angular: bool = False,
-    units: float = 1e9,
-    seed: int = None,
-):
-    """
-    This function creates the necessary variables for the pulse simulation. The
-    required variables are:
-
-    - wqi: Frequency of the qubit i.
-    - jqiqj: Coupling strength between qubits i and j.
-    - omegadi: Rabi rate for the qubit i.
-    - alphaqi: Anharmonicity of the qubit i.
-    - t1qi: T1 time of the qubit i.
-    - t2qi: T2 time of the qubit i.
-
-    Optionally, we could model higher levels of the qubits or other
-    properties. This will depend on the Hamiltonian we want to simulate.
-    Currently, only qubits are supported.
-
-    Args:
-        registers (list[int]): List of qubits.
-        coupling_map (list[list[int]]): List of qubit pairs.
-        t1_fn (function, optional): Function to draw T1 times.
-        t2_fn (function, optional): Function to draw T2 times.
-        w_fn (function, optional): Function to draw qubit frequencies.
-        j_fn (function, optional): Function to draw coupling strengths.
-        alpha_fn (function, optional): Function to draw anharmonicities.
-        omega_fn (function, optional): Function to draw Rabi rates.
-        angular (bool, optional): If False, returns parameters in frequency ω,
-            used as `2πω GHz`. If True, returns parameters in angular
-            frequency, f GHz, used as `f GHz`. Defaults to False.
-        units (int): Conversion factor (E.g. for GHz and ns, units
-            would be 1e9).
-        seed (int, optional): Seed for the random number generator.
-
-    Returns:
-        Dict: Variables for pulse simulation.
-    """
-    GHz = 1 / units
-    ns = units
-
-    # Assert functions are not None
-    assert t1_fn is not None
-    assert t2_fn is not None
-    assert w_fn is not None
-    assert j_fn is not None
-    assert omega_fn is not None
-    assert alpha_fn is not None
-
-    # Set seed
-    if seed is not None:
-        rng = np.random.default_rng(seed)
-    else:
-        rng = np.random.default_rng()
-
-    # Qubit frequencies
-    GHz2pi = GHz / 2 / np.pi
-    wq = {
-        vars_frequency(i): w_fn(rng) * GHz if angular else w_fn(rng) * GHz2pi
-        for i in registers
-    }
-
-    # Anharmonicities
-    deltaq = {
-        vars_anharmonicity(i): alpha_fn(rng) * GHz if angular else alpha_fn(rng) * GHz2pi
-        for i in registers
-    }
-
-    # Coupling strengths
-    jqq = {
-        vars_coupling(i, j): j_fn(rng) * GHz if angular else j_fn(rng) * GHz2pi
-        for i, j in coupling_map
-    }
-
-    # Rabi rates (1.0 => calibration is correct)
-    omegad = {
-        vars_rabi(i): omega_fn(rng) * GHz if angular else omega_fn(rng) * GHz2pi
-        for i in registers
-    }
-
-    # T1 and T2 times
-    t1 = {vars_t1(i): t1_fn(rng) * ns for i in registers}
-    t2 = {vars_t2(i): t2_fn(rng) * ns for i in registers}
-
-    return functools.reduce(lambda a, b: {**a, **b}, [t1, t2, wq, jqq, deltaq, omegad])
-
-
-def generate_default_simulation_vars(
-    registers: list[int],
-    coupling_map: list[list[int]],
-    angular: bool = False,
-    units: float = 1e9,
-):
-    seed = 17
-    return generate_simulation_vars(
-        registers,
-        coupling_map,
-        t1_fn=draw_t1,
-        t2_fn=draw_t2,
-        w_fn=draw_frequency,
-        j_fn=draw_coupling,
-        alpha_fn=draw_anharmonicity,
-        omega_fn=draw_rabi,
-        angular=angular,
-        units=units,
-        seed=seed,
-    )
 
 
 def get_channels(registers, backend, allowed_channels=(ControlChannel, DriveChannel)):
@@ -258,7 +241,7 @@ def get_channels(registers, backend, allowed_channels=(ControlChannel, DriveChan
             for ch in backend.configuration().get_qubit_channels(i):
                 if isinstance(ch, allowed_channels):
                     channel_dict[ch.name] = ch
-    
+
     return channel_dict
 
 
@@ -274,7 +257,7 @@ def get_drive_channel(i, backend, name=False):
         if len(channels) != 1:
             raise Exception(f"Invalid number of drive channels for qubit {i}")
         ch = channels[0]
-    
+
     if name:
         return ch.name
     else:
@@ -349,7 +332,7 @@ def get_backend_edges(backend, registers=None, directed=False):
         dir_graph = backend.coupling_map
     else:
         dir_graph = backend.configuration().coupling_map
-        
+
     if not directed:
         dir_graph = np.unique([set(edge) for edge in dir_graph])
 
@@ -361,5 +344,5 @@ def get_backend_edges(backend, registers=None, directed=False):
                 edges.append(edge)
         else:
             edges.append(edge)
-    
+
     return edges

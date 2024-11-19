@@ -6,6 +6,7 @@ from typing import Union
 from .qiskit_backend_utils import get_backend_edges
 from .one_qubit_models import rx_model, rz_model, qubit_decay_model
 from .two_qubit_models import cross_resonance_model, crosstalk_model
+from .qiskit_backend_utils import BackendSampler
 
 # Typing
 from qiskit.providers import Backend
@@ -31,6 +32,8 @@ def build_model(
     include_crosstalk: bool = False,
     include_dissipation: bool = False,
     verbose: bool = False,
+    backend_sampler: Union[None, BackendSampler] = None,
+    cross_resonance_model_name: str = "Toy",
 ) -> dict:
     """
     Build a model for the given Qiskit backend and registers.
@@ -83,14 +86,13 @@ def build_model(
         registers=registers,
         backend=backend,
         variables=simulation_vars,
-        model_name="Toy",
+        model_name=cross_resonance_model_name,
+        sampler=backend_sampler,
     )
 
     A_decay = functools.partial(
         qubit_decay_model, registers=registers, variables=simulation_vars
     )
-
-    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
 
     # Create a system model
     # =====
@@ -110,22 +112,24 @@ def build_model(
         Hs_channels += Hjs_channel + [Hj_phase_ch]
         As_static += Ajs_static
 
-    # Two qubit terms
+    # Two qubit terms (get both directions)
+    dir_edges = get_backend_edges(backend, registers=registers, directed=True)
     added_edges = []
-    for control, target in undir_edges:
-        # Get both directions
-        if control in registers and target in registers:
-            added_edges.append((control, target))
-            for pair in [(control, target), (target, control)]:
-                Hj_drift, Hjs_control, Hjs_channel = H_cr(pair)
-                H_drift += Hj_drift
-                Hs_control += Hjs_control
-                Hs_channels += Hjs_channel
+    for control, target in dir_edges:
+        added_edges.append((control, target))
+        for pair in [(control, target), (target, control)]:
+            Hj_drift, Hjs_control, Hjs_channel = H_cr(pair)
+            H_drift += Hj_drift
+            Hs_control += Hjs_control
+            Hs_channels += Hjs_channel
     if verbose:
         print(f"\tEdges: {added_edges}")
 
     # Crosstalk
-    H_xtalk = crosstalk_model(registers, undir_edges, simulation_vars)
+    undir_edges = get_backend_edges(backend, registers=registers, directed=False)
+    H_xtalk = crosstalk_model(
+        registers, undir_edges, simulation_vars, sampler=backend_sampler
+    )
 
     # Control channels
     # =====

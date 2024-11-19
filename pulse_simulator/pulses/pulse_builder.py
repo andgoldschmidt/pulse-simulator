@@ -213,6 +213,7 @@ def build_pulse_schedule(
     insert_identities=True,
     coloring=alternating_coloring,
     verbose=True,
+    rotary_gates=None,
 ):
     """Build a pulse schedule from a list of moments. The moments themselves are
     dictionaries with qubit labels as keys and gate labels as values. The one qubit
@@ -293,6 +294,7 @@ def build_pulse_schedule(
                     moment=moment,
                     qubit_gates=qubit_gates,
                     cr_gates=cr_gates,
+                    rotary_gates=rotary_gates,
                     registers=registers,
                     coloring=coloring,
                     insert_identities=insert_identities,
@@ -463,7 +465,7 @@ def fill_unplayed_dd_gates(
     Keyword Arguments:
         verbose -- whether to print information about the selected qubits (default: {False})
     """
-    if duration_2qb - duration_1qb <= 0:
+    if duration_2qb - duration_1qb < 0:
         raise ValueError("DD Error: 2QB duration must be greater than 1QB duration.")
 
     # Get idle qubits
@@ -527,6 +529,8 @@ def play_ecr_moment(
     backend,
     dt=1.0,
     verbose=False,
+    rotary_gates=None,
+    insert_dynamical_decoupling=False
 ):
     """To be run within a pulse.build block. Play a two qubit echo cross resonance
     moment.
@@ -556,8 +560,14 @@ def play_ecr_moment(
         pulse.play(cr_gates["+"], control_channel)
         played_channels.append(control_channel.name)
         played_pairs.append(qubit)
+
+        if rotary_gates is not None:
+            rotary_channel = get_drive_channel(q1, backend)
+            pulse.play(rotary_gates["+"], rotary_channel)
+            played_channels.append(rotary_channel.name)
+
     fill_unplayed_phases([], duration_2qb, registers, backend)
-    if insert_identities:
+    if insert_dynamical_decoupling:
         fill_unplayed_dd_gates(
             played_channels,
             played_pairs,
@@ -602,9 +612,14 @@ def play_ecr_moment(
         played_channels.append(control_channel.name)
         played_pairs.append(qubit)
 
+        if rotary_gates is not None:
+            rotary_channel = get_drive_channel(q1, backend)
+            pulse.play(rotary_gates["-"], rotary_channel)
+            played_channels.append(rotary_channel.name)
+
     fill_unplayed_phases([], duration_2qb, registers, backend)
-    
-    if insert_identities:
+
+    if insert_dynamical_decoupling:
         fill_unplayed_dd_gates(
             played_channels,
             played_pairs,

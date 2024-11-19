@@ -38,7 +38,25 @@ def calibrate_gateset(
     samples: Union[int, None] = None,
     verbose: bool = True,
 ) -> dict:
-    """Calibrate a gateset of pulses."""
+    """Calibrate a gateset of pulses.
+    
+    Args:
+
+    gateset (list[np.ndarray]): List of gates to calibrate.
+    names (list[str]): List of gate names.
+    angles (list[float]): List of rotation angles.
+    duration (int): Duration of the pulses.
+    dt (float): Time step.
+    samples (int, optional): Number of samples to store in the spline fit. 
+        Defaults to None, which uses the number of samples in the provided gateset.
+    verbose (bool, optional): Print messages. Defaults to True.
+
+    Returns:
+    dict: Calibrated gateset.
+
+
+    
+    """
     assert len(angles) == len(gateset), "Number of angles must match number of gates."
     assert len(names) == len(gateset), "Number of names must match number of gates."
 
@@ -67,16 +85,27 @@ def calibrate_gateset(
             # NOTE: Real-valued signals only
             samples = get_samples(stored_envs[i]).real
             amp = get_amplitude_for_rotation(angles[i], samples, dt)
-            message = f"Adjusting {names[i]} by amplitude{amp: 0.2f} for angle{angles[i]/np.pi: 0.2f}π"
+            message = (
+                f"Adjusting {names[i]} by amplitude {amp: 0.2f}"
+                + f" for rotation angle {angles[i]/np.pi: 0.2f}π"
+            )
         except ValueError:
             # Catch failed amplitude calculation
             amp = angles[i]
-            message = f"Zero area signal. Adjusting {names[i]} by amplitude{amp: 0.2f} (using provided angle)."
+            message = (
+                f"Zero area signal. Adjusting {names[i]} by amplitude {amp: 0.2f}"
+                + " (using provided rotation angle)."
+            )
 
         if verbose:
             print(message)
 
         # Apply to gate
+        if verbose:
+            if type(duration) != int:
+                print(f"Duration is not an integer: {duration}, converting.")
+                duration = int(duration)
+
         calibrated_gateset[names[i]] = pulse.ScalableSymbolicPulse(
             pulse_type=names[i],
             duration=duration,
@@ -93,17 +122,29 @@ def default_single_qubit_gateset(
     keys: list[str],
     duration: int,
     dt: float,
-    sx_angle: float = np.pi / 4,
-    x_angle: float = np.pi / 2,
 ):
     gates = {}
     for k in keys:
         if "SX" in k:
-            gates[k] = gaussian_envelope(duration, dt=dt, angle=sx_angle)
+            gates[k] = np.pi / 4
         elif "X" in k:
-            gates[k] = gaussian_envelope(duration, dt=dt, angle=x_angle)
+            gates[k] = np.pi / 2
         elif "I" in k:
-            gates[k] = zero_envelope(duration)
+            gates[k] = 0.0
         else:
             raise ValueError(f"Unknown gate {k}")
-    return gates
+    return default_gateset(gates, duration, dt)
+
+
+def default_gateset(
+    gates: dict[str, float],
+    duration: int,
+    dt: float,
+):
+    gateset = {}
+    for k, v in gates.items():
+        if np.isclose(v, 0.0):
+            gateset[k] = zero_envelope(duration)
+        else:
+            gateset[k] = gaussian_envelope(duration, dt=dt, angle=v)
+    return gateset
