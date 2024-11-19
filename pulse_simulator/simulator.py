@@ -69,6 +69,7 @@ class Simulator:
         gpu: bool = False,
         rotary_gates: Union[dict[str, ScalableSymbolicPulse], None] = None,
         virtual_cases: list[str] = ["phase"],
+        return_operators: bool = False,
     ) -> list[Operator]:
         """Simulate the moments of a circuit.
 
@@ -196,14 +197,23 @@ class Simulator:
                         )
 
         # multiply results in order
-        out: list[Operator] = [None] * (len(self._moments) + 1)
-        out[0] = Operator(QuantumCircuit(len(self._registers)))
+        res: list[Operator] = [None] * (len(self._moments) + 1)
+        res[0] = Operator(QuantumCircuit(len(self._registers)))
+        if return_operators:
+            ops = [res[0]]
+        else:
+            ops = None
         for i, index in enumerate(self._moment_to_unique_moment_index):
             case, case_index = unique_moment_index_to_case_index[index]
             superop_or_op = self._unique_results_dict[case][case_index]
-            out[i + 1] = superop_or_op @ out[i]
+            res[i + 1] = superop_or_op @ res[i]
+            if return_operators:
+                ops.append(superop_or_op)
 
-        return out
+        if ops is None:
+            return res
+        else:
+            return res, ops
 
     def get_moments(self) -> list[CIRCUIT_MOMENT]:
         return self._moments
