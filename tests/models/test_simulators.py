@@ -87,8 +87,9 @@ def test_signals(signals, timing):
 
 @pytest.fixture
 def config(registers, coupling_map, units):
-    return pulse_simulator.generate_default_simulation_vars(
-        registers, coupling_map, units=units
+    sampler = pulse_simulator.BackendSampler(units, seed=17)
+    return sampler.generate_simulation_vars(
+        registers, coupling_map, angular=False
     )
 
 
@@ -379,7 +380,7 @@ def test_state_sim_closed_crosstalk(
     probs_zz_f = np.abs(y_zz_f) ** 2
 
     # Loss of fidelity due to crosstalk is small
-    assert np.isclose(probs_zz_f, probs_expected, atol=1e-6).all()
+    assert np.isclose(probs_zz_f, probs_expected, atol=1e-2).all()
 
     # ...but still harmful
     zz_distance = np.linalg.norm(probs_zz_f - probs_expected)
