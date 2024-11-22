@@ -66,7 +66,7 @@ class BackendSampler:
             "t2": {"mean": 154 * 1e-06, "std": 82 * 1e-06 / 10},
             "frequency": {"mean": 2 * np.pi * 4.90e9, "std": 2 * np.pi * 0.11e9},
             "anharmonicity": {"mean": -2 * np.pi * 0.31e9, "std": 2 * np.pi * 0.0054e9},
-            "coupling": {"mean": 2 * np.pi * 1.66e6, "std": 0.0},
+            "coupling": {"mean": 2 * np.pi * 1.72e6, "std": 0.0},
             "rabi": {"mean": 1e9, "std": 0.0},
         }
 

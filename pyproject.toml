@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pulse-simulator"
-version = "0.3.1"
+version = "0.3.2"
 description = ""
 authors = ["Andy Goldschmidt <agoldschmidt11@gmail.com>, Emilio Pelaez <epelaez@uchicago.edu>"]
 readme = "README.md"

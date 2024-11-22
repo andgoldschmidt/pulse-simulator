@@ -43,7 +43,9 @@ def qiskit_identity_operator(n_qubits, open=False):
     else:
         return op
 
-
+# TODO: 
+#   if either isa quantum_info.SuperOp:
+#       quantum_info.process_fidelity(R, U)
 def operator_fidelity(
     a: Union[np.ndarray, quantum_info.Operator],
     b: Union[np.ndarray, quantum_info.Operator]
