@@ -8,7 +8,7 @@ from .hilbert_space_labels import (
     print_density_matrix,
     print_wavefunction,
 )
-from .ising_model import TransverseIsingModel
+from .circuits import *
 from .plot_utils import *
 from .qiskit_simulation_utils import (
     operator_fidelity,
