@@ -211,6 +211,7 @@ def build_pulse_schedule(
     dt=1.0,
     name=None,
     insert_identities=True,
+    insert_dynamical_decoupling=False,
     coloring=alternating_coloring,
     verbose=True,
     rotary_gates=None,
@@ -266,6 +267,8 @@ def build_pulse_schedule(
     Keyword Arguments:
         name -- the schedule name (default: {None})
         dt -- simulation time step (see phase moments) (default: {1.0})
+        insert_identities -- whether to insert identity gates for unplayed qubits (default: {True})
+        insert_dynamical_decoupling -- whether to insert dynamical decoupling sequences (default: {False})
         coloring -- the coloring rule for the qubits (default: {default_coloring})
 
     Returns:
@@ -277,6 +280,7 @@ def build_pulse_schedule(
         print(f"\t CR gateset: {cr_gates.keys()}")
         print(f"\t Registers: {registers}")
         print(f"\t Insert identities: {insert_identities}")
+        print(f"\t Insert dynamical decoupling: {insert_dynamical_decoupling}")
 
     with pulse.build(name=name, backend=backend) as schedule:
         for moment in list_of_moments:

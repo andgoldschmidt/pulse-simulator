@@ -64,6 +64,7 @@ class Simulator:
         include_crosstalk: bool = False,
         include_dissipation: bool = False,
         insert_identities: bool = True,
+        insert_dynamical_decoupling: bool = False,
         verbose: bool = False,
         simulation_vars: Union[dict, None] = None,
         cross_resonance_model_name: str = "Toy",
@@ -88,6 +89,10 @@ class Simulator:
             atol (float): the absolute tolerance
             rtol (float): the relative tolerance
             gpu (bool): whether to use GPU acceleration
+
+        Note on cases:
+            "single" if the moment is a single qubit moment, "ecr" if it is a two
+            qubit moment, 'phase' if it is a Z gate moment.
 
         Returns:
             Union[Operator, SuperOp]: the circuit operator after each moment
@@ -155,6 +160,7 @@ class Simulator:
                 name=f"unique-moment-{unique_moments.index(moment)}",
                 dt=dt,
                 insert_identities=insert_identities,
+                insert_dynamical_decoupling=insert_dynamical_decoupling,
                 verbose=verbose,
                 rotary_gates=rotary_gates,
             )

@@ -27,7 +27,8 @@ class QAOAModel:
 
     def get_circuit(
             self, 
-            parameters: Union[np.ndarray, None] = None
+            parameters: Union[np.ndarray, None] = None,
+            return_parameters: bool = False
         ) -> QAOAAnsatz:
         """
         Get the QAOA circuit with the given parameters.
@@ -35,7 +36,10 @@ class QAOAModel:
         if parameters is None:
             parameters = self._rng.standard_normal(len(self.qaoa.parameters)) * np.pi
         
-        return self.qaoa.assign_parameters(parameters)
+        if return_parameters:
+            return self.qaoa.assign_parameters(parameters), parameters
+        else:
+            return self.qaoa.assign_parameters(parameters)
 
 
     def max_cut_cost(self, x: np.ndarray) -> float:
