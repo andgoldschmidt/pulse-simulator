@@ -58,8 +58,8 @@ We need to define pulses that implement a gate set.
 ```Python
 ns = 1e-9
 dt_simulation =  backend.dt / ns
-desired_1qb_duration = 120 * backend.dt 
-duration_1qb = ps.qiskit_closest_multiple_of_16(desired_1qb_duration, backend)
+desired_1qb_samples = 120
+duration_1qb = ps.qiskit_closest_multiple_of_16(desired_1qb_samples)
 
 default_1qb_gateset = ps.default_single_qubit_gateset(
     ["X1", "X2", "SX1", "SX2", "ID1", "ID2"], duration_1qb, dt_simulation

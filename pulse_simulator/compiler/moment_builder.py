@@ -52,7 +52,7 @@ class MomentBuilder:
         circuit: QuantumCircuit,
         separate_moments: bool = True,
         no_end_to_end: bool = True,
-        optimization_level: Union[int, None] = 1,
+        optimization_level: Union[int, None] = 2,
         insert_identities: bool = True,
         draw: bool = False,
     ) -> list[CIRCUIT_MOMENT]:
