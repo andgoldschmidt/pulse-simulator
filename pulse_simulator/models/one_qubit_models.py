@@ -4,6 +4,7 @@ from .qiskit_backend_utils import (
     get_phase_channel,
     vars_frequency,
     vars_rabi,
+    vars_detuning,
     vars_t1,
     vars_t2,
 )
@@ -120,6 +121,7 @@ def rx_model(
     try:
         w = 2 * np.pi * variables[vars_frequency(qubit)]
         r = 2 * np.pi * variables[vars_rabi(qubit)]
+        d = variables[vars_detuning(qubit)]
     except Exception as e:
         print(f"Missing required parameter for R_X model on qubit {qubit}.")
         raise e
@@ -139,6 +141,9 @@ def rx_model(
         drift_op = w / 2 * from_label(drift_label, reverse=qiskit_order)
         params["Drift"] = f"{w / 2: .2e} * Z_{qubit}"
 
+    # Get detuning
+    drift_op += d * from_label(drift_label, reverse=qiskit_order)
+   
     # Get drive
     control_ch = get_drive_channel(qubit, backend, name=True)
     control_op = r * from_label(control_label, reverse=qiskit_order)
