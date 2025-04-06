@@ -83,14 +83,12 @@ def parse_gate_label(label):
     return label, number
 
 
-def color_moments(list_of_moments, coloring=alternating_coloring):
+def color_moments(list_of_moments, coloring):
     """Color the moments in a list of moments.
 
     Arguments:
         list_of_moments -- the moments to be colored
-
-    Keyword Arguments:
-        coloring -- the coloring rule for the qubits (default: {alternating_coloring})
+        coloring -- the coloring rule for the qubits (applies suffix to name)
 
     Returns:
         The colored moments
@@ -212,7 +210,7 @@ def build_pulse_schedule(
     name=None,
     insert_identities=True,
     insert_dynamical_decoupling=False,
-    coloring=alternating_coloring,
+    coloring=None,
     verbose=True,
     rotary_gates=None,
 ):
@@ -281,6 +279,10 @@ def build_pulse_schedule(
         print(f"\t Registers: {registers}")
         print(f"\t Insert identities: {insert_identities}")
         print(f"\t Insert dynamical decoupling: {insert_dynamical_decoupling}")
+        if coloring is None:
+            coloring = alternating_coloring
+            print(f"\t No coloring provided. Using `pulse_builder` default coloring.")
+        print(f"\t Coloring: {coloring.__name__}")
 
     with pulse.build(name=name, backend=backend) as schedule:
         for moment in list_of_moments:

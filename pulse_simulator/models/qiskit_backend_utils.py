@@ -23,6 +23,10 @@ def vars_frequency(i):
     return f"wq{i}"
 
 
+def vars_detuning(i):
+    return f"deltaq{i}"
+
+
 def vars_coupling(i, j):
     assert i != j
     return f"jq{min(i,j)}q{max(i,j)}"
@@ -67,6 +71,7 @@ class BackendSampler:
             "frequency": {"mean": 2 * np.pi * 4.90e9, "std": 2 * np.pi * 0.11e9},
             "anharmonicity": {"mean": -2 * np.pi * 0.31e9, "std": 2 * np.pi * 0.0054e9},
             "coupling": {"mean": 2 * np.pi * 1.72e6, "std": 0.0},
+            "detuning": {"mean": 0.0, "std": 2 * np.pi * 0.01e9},
             "rabi": {"mean": 1e9, "std": 0.0},
         }
 
@@ -100,6 +105,9 @@ class BackendSampler:
 
     def draw_frequency(self, mean=False, std=False):
         return self.draw("frequency", mean=mean, std=std)
+
+    def draw_detuning(self, mean=False, std=False):
+        return self.draw("detuning", mean=mean, std=std)
 
     def draw_anharmonicity(self, mean=False, std=False):
         return self.draw("anharmonicity", mean=mean, std=std)
@@ -158,6 +166,9 @@ class BackendSampler:
         # Qubit frequencies
         wq = {vars_frequency(i): freq(self.draw_frequency()) for i in registers}
 
+        # Qubit detuning 
+        wd = {vars_detuning(i): freq(self.draw_detuning()) for i in registers}
+
         # Anharmonicities
         deltaq = {
             vars_anharmonicity(i): freq(self.draw_anharmonicity()) for i in registers
@@ -179,7 +190,7 @@ class BackendSampler:
             t2[vars_t2(i)] = time(t2_val)
 
         return functools.reduce(
-            lambda a, b: {**a, **b}, [t1, t2, wq, jqq, deltaq, omegad]
+            lambda a, b: {**a, **b}, [t1, t2, wq, wd, jqq, deltaq, omegad]
         )
 
 

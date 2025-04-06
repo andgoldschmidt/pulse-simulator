@@ -6,6 +6,7 @@ from .qiskit_simulation_utils import qiskit_identity_operator
 
 # Types
 from typing import Union
+from collections.abc import Callable
 from qiskit.providers import Backend
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Operator, SuperOp
@@ -24,6 +25,7 @@ class Simulator:
         registers: list[int],
         backend: Backend,
         units: float = 1e9,
+        simulation_vars = []
     ):
         """Creates a `Simulator` instance."""
         self._registers = registers
@@ -43,6 +45,9 @@ class Simulator:
         self._simulation_vars = self._backend_sampler.generate_simulation_vars(
             self._registers, self._coupling_map
         )
+
+        # add any simulation vars passed to the problem
+        [self._simulation_vars.update(v) for v in simulation_vars]
 
         # Filled by `simulate_circuit`
         # NOTE: If the BackendSampler is included here, it will be used to generate
@@ -65,6 +70,7 @@ class Simulator:
         include_dissipation: bool = False,
         insert_identities: bool = True,
         insert_dynamical_decoupling: bool = False,
+        coloring: Union[Callable, None] = None,
         verbose: bool = False,
         simulation_vars: Union[dict, None] = None,
         cross_resonance_model_name: str = "Toy",
@@ -84,6 +90,7 @@ class Simulator:
             dt (float): the simulation time step
             include_crosstalk (bool): whether to include crosstalk
             include_dissipation (bool): whether to include qubit decay
+            coloring: (dict): the coloring label (maps qubit -> number suffix)
             verbose (bool): whether to print additional information
             simulation_vars (dict): the configuration variables
             atol (float): the absolute tolerance
@@ -161,6 +168,7 @@ class Simulator:
                 dt=dt,
                 insert_identities=insert_identities,
                 insert_dynamical_decoupling=insert_dynamical_decoupling,
+                coloring=coloring,
                 verbose=verbose,
                 rotary_gates=rotary_gates,
             )
