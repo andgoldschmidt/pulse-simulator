@@ -271,3 +271,17 @@ def cross_resonance_model(
         return drift_op, control_ops, control_channels, params
     else:
         return drift_op, control_ops, control_channels
+
+
+def get_ix_coef(simlator, sampler, J_factor=1.0):
+    J = J_factor * simlator._backend_sampler.frequency_units(sampler.draw_coupling(mean=True), angular=True)
+    αc = simlator._backend_sampler.frequency_units(sampler.draw_anharmonicity(mean=True), angular=True)
+    Δct = simlator._backend_sampler.frequency_units(sampler.draw_frequency(std=True), angular=True)
+    return -J / (Δct + αc)
+
+
+def get_zz_coef(simlator, sampler, J_factor=1.0):
+    J = J_factor * simlator._backend_sampler.frequency_units(sampler.draw_coupling(mean=True), angular=True)
+    αc = simlator._backend_sampler.frequency_units(sampler.draw_anharmonicity(mean=True), angular=True)
+    Δct = simlator._backend_sampler.frequency_units(sampler.draw_frequency(std=True), angular=True)
+    return 2 * αc * J**2 / (Δct**2 - αc**2) # Note units!
